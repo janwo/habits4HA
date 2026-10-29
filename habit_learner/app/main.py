@@ -60,6 +60,8 @@ class Learner:
         return self.msg_id
 
     async def run(self):
+        if not TOKEN:
+            log.error("SUPERVISOR_TOKEN fehlt – Anmeldung an Home Assistant nicht möglich")
         while True:
             try:
                 await self.connect()
