@@ -145,6 +145,13 @@ class Store:
             "SELECT status, COALESCE(answered, offered) FROM suggestions"
             " WHERE pattern = ? ORDER BY id DESC LIMIT 1", (pattern,)).fetchone()
 
+    def suggestions(self, limit: int = 50) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, pattern, text, offered, status, answered, automation"
+            " FROM suggestions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        keys = ("id", "pattern", "text", "offered", "status", "answered", "automation")
+        return [dict(zip(keys, row)) for row in rows]
+
     def offers_since(self, ts: float) -> int:
         return self.db.execute(
             "SELECT COUNT(*) FROM suggestions WHERE offered >= ?", (ts,)).fetchone()[0]

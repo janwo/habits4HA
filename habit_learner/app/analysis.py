@@ -289,6 +289,24 @@ def analyse(db: sqlite3.Connection, now: float | None = None, zone=None) -> list
     return patterns
 
 
+def progress(p: Pattern) -> dict:
+    """Wie nah ist ein Muster an den Schwellen? Je Kriterium 0…1, plus Gesamtwert."""
+    parts = {
+        "hits": min(p.hits / MIN_HITS, 1.0),
+        "rate": min(p.rate / MIN_RATE, 1.0),
+        "spread": min(MAX_SPREAD / p.spread, 1.0) if p.spread else 1.0,
+    }
+    return {**parts, "total": sum(parts.values()) / len(parts)}
+
+
+def status(p: Pattern) -> str:
+    if p.automated:
+        return "erledigt"
+    if p.ready:
+        return "bereit"
+    return "beobachtet" if p.hits >= 2 and p.spread <= MAX_SPREAD * 1.5 else "schwach"
+
+
 def report(patterns: list[Pattern]) -> list[str]:
     lines = []
     for p in patterns:
@@ -296,7 +314,7 @@ def report(patterns: list[Pattern]) -> list[str]:
             lines.append(f"VORSCHLAG  {p.describe()}")
         elif p.automated:
             lines.append(f"ERLEDIGT   {p.describe()} – bereits automatisiert")
-        elif p.hits >= 2 and p.spread <= MAX_SPREAD * 1.5:
+        elif status(p) == "beobachtet":
             missing = max(MIN_HITS - p.hits, 0)
             hint = f", noch ~{missing} Treffer" if missing else ""
             lines.append(f"BEOBACHTE  {p.describe()}{hint}")

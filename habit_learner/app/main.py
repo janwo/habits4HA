@@ -23,6 +23,7 @@ from collections import OrderedDict
 import aiohttp
 
 import analysis
+import web
 from shadow import Shadow
 from suggest import Suggester
 from store import Store
@@ -79,6 +80,8 @@ class Learner:
         self.own_contexts: OrderedDict[str, bool] = OrderedDict()  # eigene Dienstaufrufe
         self.platforms: dict[str, str] = {}     # entity_id → Integration (z. B. cast)
         self.suggester = Suggester(self, opts)
+        self.patterns: list = []
+        self.analysed_at: float | None = None
         self.shadow.on_hit = self.suggester.on_hit
 
     def next_id(self) -> int:
@@ -323,16 +326,20 @@ class Learner:
             log.info("Datenbank: %s (%d alte Einträge gelöscht)",
                      self.store.stats(), removed)
             try:
-                patterns = analysis.analyse(self.store.db, zone=self.zone)
-                lines = analysis.report(patterns)
-                log.info("Analyse: %d Muster", len(lines))
-                for line in lines + self.shadow.report():
-                    log.info("%s", line)
-                self.shadow.set_patterns(patterns)
-                self.suggester.set_patterns(patterns)
+                self.run_analysis()
             except Exception:  # noqa: BLE001 – Analyse darf die Erfassung nie stoppen
                 log.exception("Analyse fehlgeschlagen")
             await asyncio.sleep(24 * 3600)
+
+    def run_analysis(self):
+        patterns = analysis.analyse(self.store.db, zone=self.zone)
+        lines = analysis.report(patterns)
+        log.info("Analyse: %d Muster", len(lines))
+        for line in lines + self.shadow.report():
+            log.info("%s", line)
+        self.shadow.set_patterns(patterns)
+        self.suggester.set_patterns(patterns)
+        self.patterns, self.analysed_at = patterns, time.time()
 
     async def ticker(self):
         """Schattenmodus: Zeitfenster öffnen und schließen."""
@@ -352,6 +359,7 @@ async def main():
     )
     learner = Learner(opts)
     log.info("Habit Learner gestartet – beobachte: %s", ", ".join(sorted(learner.domains)))
+    await web.start(learner)
     await asyncio.gather(learner.run(), learner.maintenance(), learner.ticker())
 
 

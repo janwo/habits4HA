@@ -1,5 +1,5 @@
 name: Habit Learner
-version: "0.5.0"
+version: "0.6.0"
 slug: habit_learner
 description: Erkennt wiederkehrende manuelle Aktionen und schlägt Automationen vor
 url: https://github.com/janwo/habits4HA
@@ -10,6 +10,10 @@ init: false
 startup: application
 boot: auto
 homeassistant_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:head-lightbulb-outline
+panel_title: Gewohnheiten
 options:
   log_level: info
   retention_days: 180

@@ -200,4 +200,4 @@ die Auslöser-Kandidaten (Wecker, Personen) anbieten statt sie suchen zu lassen.
 5. Autopilot je Muster
 6. Folgemuster, Korrekturen, Kontext → Einstellung – gemessen über den
    Schattenmodus
-7. Seitenleiste
+7. ✅ Seitenleiste (erste Fassung: Anzeige, noch ohne Einstellen)

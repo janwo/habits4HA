@@ -128,3 +128,23 @@ zweimal Rückgängig → zurück in den Schattenmodus. Nur Licht, Szenen, Medien
 eingebauten Mustern und Fallen (Wecker-Folgemuster, Rauschen, Urlaub,
 bereits automatisiert). Echte Datenbanken oder Logs kommen nie ins Repo
 (→ D01). Tests laufen ohne HA: `python3 habit_learner/tests/test_*.py`.
+
+## D12 – Kein Force-Push auf `main`
+2026-10-29 · gilt
+
+**Kontext:** Home Assistant hält eine eigene Kopie des Repos. Nach dem
+Umschreiben der Historie (D01) bot HA kein Update mehr an.
+
+**Entscheidung:** `main` wird nie mehr umgeschrieben. Fehler werden mit neuen
+Commits korrigiert. Muss doch einmal etwas aus der Historie entfernt werden:
+vorher mit dem Nutzer klären und erklären, wie das Repo in HA neu eingebunden
+wird.
+
+## D13 – Oberfläche als Ingress-Seite im Add-on, ohne Build-Schritt
+2026-10-29 · gilt
+
+**Entscheidung:** Seitenleisten-Panel über HA-Ingress; aiohttp liefert eine
+einzelne HTML-Seite (ohne Framework, ohne CDN) und eine JSON-API unter
+`api/…`. Zugriff nur über den Ingress-Proxy des Supervisors. Zeigt
+Vorschläge, fast erreichte Muster mit Fortschritt zu den Schwellen (D05),
+Schattenbilanz und Vorschläge mit Antworten.
