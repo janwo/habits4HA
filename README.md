@@ -17,9 +17,10 @@ Automationen vorschlägt – z. B. „nach dem Wecker nach ~10 min Licht aus“ 
 | 1 | Ereignisse erfassen (manuell / Automation / Gerät) in SQLite | ✅ v0.1.0 |
 | 1b | Kontext, Bereiche, auslösende Automation, Auslöser-Ereignisse | ✅ v0.2.0 |
 | 2 | Mustererkennung: Zeit- und Sonnenmuster (Ausgabe im Log) | ✅ v0.3.0 |
-| 2b | Schattenmodus, Folgemuster, Kontext → Einstellung | geplant |
-| 3 | Vorschläge per Google-Home-Ansage und App-Benachrichtigung | geplant |
-| 4 | Weboberfläche in der Seitenleiste | geplant |
+| 3 | Schattenmodus: Vorhersagen live prüfen, Bilanz im Log | ✅ v0.4.0 |
+| 3b | Folgemuster, Kontext → Einstellung | geplant |
+| 4 | Vorschläge im Moment (Benachrichtigung, Ansage), Autopilot | geplant |
+| 5 | Weboberfläche in der Seitenleiste | geplant |
 
 ## Herkunft von Ereignissen
 

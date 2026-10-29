@@ -23,6 +23,20 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_ts     ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_origin ON events(origin, ts);
+
+-- Schattenmodus: Vorhersagen und was tatsächlich passiert ist
+CREATE TABLE IF NOT EXISTS predictions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern    TEXT NOT NULL,
+    entity_id  TEXT NOT NULL,
+    expected   TEXT NOT NULL,
+    opened     REAL NOT NULL,
+    closes     REAL NOT NULL,
+    result     TEXT,                  -- treffer | abweichend | verpasst
+    resolved   REAL,
+    delay_min  REAL                   -- Abstand zur erwarteten Mitte
+);
+CREATE INDEX IF NOT EXISTS idx_predictions_pattern ON predictions(pattern, opened);
 """
 
 # Spalten, die nach v0.1 dazukamen – bestehende Datenbanken werden ergänzt.
@@ -65,8 +79,34 @@ class Store:
         )
         self.db.commit()
 
+    def add_prediction(self, *, pattern, entity_id, expected, opened, closes) -> int:
+        cur = self.db.execute(
+            "INSERT INTO predictions (pattern, entity_id, expected, opened, closes)"
+            " VALUES (?,?,?,?,?)", (pattern, entity_id, expected, opened, closes))
+        self.db.commit()
+        return cur.lastrowid
+
+    def resolve_prediction(self, pred_id, *, result, resolved, delay):
+        self.db.execute(
+            "UPDATE predictions SET result = ?, resolved = ?, delay_min = ? WHERE id = ?",
+            (result, resolved, delay, pred_id))
+        self.db.commit()
+
+    def close_stale_predictions(self, now: float):
+        """Nach einem Neustart offene, abgelaufene Vorhersagen nicht werten."""
+        self.db.execute("DELETE FROM predictions WHERE result IS NULL AND closes < ?", (now,))
+        self.db.commit()
+
+    def prediction_stats(self, days: int) -> list[tuple[str, int, int]]:
+        cutoff = time.time() - days * 86400
+        return self.db.execute(
+            "SELECT pattern, SUM(result = 'treffer'), COUNT(*) FROM predictions"
+            " WHERE result IS NOT NULL AND opened >= ? GROUP BY pattern"
+            " ORDER BY pattern", (cutoff,)).fetchall()
+
     def purge(self, retention_days: int) -> int:
         cutoff = time.time() - retention_days * 86400
+        self.db.execute("DELETE FROM predictions WHERE opened < ?", (cutoff,))
         cur = self.db.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
         self.db.commit()
         return cur.rowcount

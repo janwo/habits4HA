@@ -195,7 +195,7 @@ die Auslöser-Kandidaten (Wecker, Personen) anbieten statt sie suchen zu lassen.
 1. ✅ Datensammlung erweitern: auslösende Automation, Bereich, Kontext,
    `trigger_entities`, Anwesenheit lückenlos
 2. ✅ Analyse: Zeit- und Sonnenmuster, Ausgabe im Log
-3. Schattenmodus: live vorhersagen und vergleichen
+3. ✅ Schattenmodus: live vorhersagen und vergleichen
 4. Vorschlag im Moment (Benachrichtigung, Ansage)
 5. Autopilot je Muster
 6. Folgemuster, Korrekturen, Kontext → Einstellung – gemessen über den

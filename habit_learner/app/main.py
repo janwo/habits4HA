@@ -17,11 +17,13 @@ import datetime as dt
 import json
 import logging
 import os
+import time
 from collections import OrderedDict
 
 import aiohttp
 
 import analysis
+from shadow import Shadow
 from store import Store
 
 OPTIONS_FILE = "/data/options.json"
@@ -66,6 +68,9 @@ class Learner:
         self.states: dict[str, dict] = {}       # aktueller Zustand aller Entitäten
         self.areas: dict[str, str] = {}         # entity_id → area_id
         self.contexts: OrderedDict[str, str] = OrderedDict()  # context_id → automation
+        self.zone = analysis.tz()
+        self.store.close_stale_predictions(time.time())
+        self.shadow = Shadow(self.store, self.zone)
 
     def next_id(self) -> int:
         self.msg_id += 1
@@ -170,12 +175,28 @@ class Learner:
             return
         d = event.get("data", {})
         entity_id = d.get("entity_id", "")
+        if entity_id == "sun.sun":
+            self.handle_sun(d)
         # Kontext erst nach dem Speichern aktualisieren: er beschreibt die Lage davor.
         self.handle(event)
         if d.get("new_state"):
             self.states[entity_id] = d["new_state"]
         else:
             self.states.pop(entity_id, None)
+
+    def handle_sun(self, d: dict):
+        old = (d.get("old_state") or {}).get("attributes", {})
+        new = (d.get("new_state") or {}).get("attributes", {})
+        self.shadow.on_sun(time.time(), old.get("elevation"), new.get("elevation"),
+                           new.get("rising"), self.states, self.current_key)
+
+    def current_key(self, entity_id: str) -> str | None:
+        """Vergröbertes Ergebnis des aktuellen Zustands – wie in der Analyse."""
+        s = self.states.get(entity_id)
+        if not s:
+            return None
+        return (f"{entity_id} → "
+                f"{analysis.outcome(entity_id, s.get('state'), s.get('attributes', {}))}")
 
     def handle(self, event: dict):
         d = event.get("data", {})
@@ -209,6 +230,9 @@ class Learner:
                        context=self.context_snapshot())
         log.debug("%-10s %s: %s → %s%s", origin, entity_id, old_s, new_s,
                   f" ({automation})" if automation else "")
+        if origin in ("manual", "device"):
+            key = f"{entity_id} → {analysis.outcome(entity_id, new_s, new_attrs)}"
+            self.shadow.on_action(ts, entity_id, key)
 
     def handle_trigger(self, event: dict):
         """Auslöser (Personen, Wecker, …): nur Zustandswechsel zählen."""
@@ -233,13 +257,24 @@ class Learner:
             log.info("Datenbank: %s (%d alte Einträge gelöscht)",
                      self.store.stats(), removed)
             try:
-                lines = analysis.report(analysis.analyse(self.store.db))
+                patterns = analysis.analyse(self.store.db, zone=self.zone)
+                lines = analysis.report(patterns)
                 log.info("Analyse: %d Muster", len(lines))
-                for line in lines:
+                for line in lines + self.shadow.report():
                     log.info("%s", line)
+                self.shadow.set_patterns(patterns)
             except Exception:  # noqa: BLE001 – Analyse darf die Erfassung nie stoppen
                 log.exception("Analyse fehlgeschlagen")
             await asyncio.sleep(24 * 3600)
+
+    async def ticker(self):
+        """Schattenmodus: Zeitfenster öffnen und schließen."""
+        while True:
+            try:
+                self.shadow.tick(time.time(), self.states, self.current_key)
+            except Exception:  # noqa: BLE001
+                log.exception("Schattenmodus fehlgeschlagen")
+            await asyncio.sleep(30)
 
 
 async def main():
@@ -250,7 +285,7 @@ async def main():
     )
     learner = Learner(opts)
     log.info("Habit Learner gestartet – beobachte: %s", ", ".join(sorted(learner.domains)))
-    await asyncio.gather(learner.run(), learner.maintenance())
+    await asyncio.gather(learner.run(), learner.maintenance(), learner.ticker())
 
 
 if __name__ == "__main__":
