@@ -43,7 +43,8 @@ class Pattern:
     chances: int
     other_spread: float | None = None   # Streuung des unterlegenen Bezugspunkts
     automated: bool = False
-    notes: list = field(default_factory=list)
+    target_state: str | None = None     # konkreter Zielzustand – letzter Treffer
+    target_attrs: dict = field(default_factory=dict)
 
     @property
     def rate(self) -> float:
@@ -216,9 +217,11 @@ def evaluate(actions: list[dict], days_window: list[dt.date], zone, presence: Pr
         if home is not False or day in hit_days:
             chances += 1
 
+    latest = max((per_day[d] for d in hit_days), key=lambda a: a["ts"], default=chosen[-1])
     return Pattern(key=chosen[0]["key"], entity_id=chosen[0]["entity_id"], anchor=anchor,
                    days=group, center=center, rising=rising, spread=spread,
-                   hits=len(hit_days), chances=chances)
+                   hits=len(hit_days), chances=chances,
+                   target_state=latest["state"], target_attrs=latest["attrs"])
 
 
 def best_pattern(actions: list[dict], days_window, zone, presence) -> Pattern | None:

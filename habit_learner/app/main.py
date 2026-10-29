@@ -24,11 +24,13 @@ import aiohttp
 
 import analysis
 from shadow import Shadow
+from suggest import Suggester
 from store import Store
 
 OPTIONS_FILE = "/data/options.json"
 DB_FILE = "/data/habits.db"
 WS_URL = "ws://supervisor/core/websocket"
+REST_URL = "http://supervisor/core/api"
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 
 IGNORED_STATES = {"unavailable", "unknown", None}
@@ -71,6 +73,13 @@ class Learner:
         self.zone = analysis.tz()
         self.store.close_stale_predictions(time.time())
         self.shadow = Shadow(self.store, self.zone)
+        self.ws = None
+        self.session = None
+        self.pending: dict[int, asyncio.Future] = {}
+        self.own_contexts: OrderedDict[str, bool] = OrderedDict()  # eigene Dienstaufrufe
+        self.platforms: dict[str, str] = {}     # entity_id → Integration (z. B. cast)
+        self.suggester = Suggester(self, opts)
+        self.shadow.on_hit = self.suggester.on_hit
 
     def next_id(self) -> int:
         self.msg_id += 1
@@ -88,6 +97,7 @@ class Learner:
 
     async def connect(self):
         async with aiohttp.ClientSession() as session:
+            self.session = session
             async with session.ws_connect(WS_URL, heartbeat=30) as ws:
                 msg = await ws.receive_json()
                 if msg.get("type") != "auth_required":
@@ -104,14 +114,25 @@ class Learner:
                 self.snapshot_triggers()
 
                 for event_type in ("state_changed", "automation_triggered",
-                                   "script_started"):
+                                   "script_started", "mobile_app_notification_action"):
                     await self.call(ws, "subscribe_events", event_type=event_type)
-                async for raw in ws:
-                    if raw.type != aiohttp.WSMsgType.TEXT:
-                        break
-                    data = raw.json()
-                    if data.get("type") == "event":
-                        self.dispatch(data["event"])
+                self.ws = ws
+                discovery = asyncio.get_running_loop().create_task(self.discover())
+                try:
+                    async for raw in ws:
+                        if raw.type != aiohttp.WSMsgType.TEXT:
+                            break
+                        data = raw.json()
+                        if data.get("type") == "event":
+                            self.dispatch(data["event"])
+                        elif data.get("id") in self.pending:
+                            self.pending.pop(data["id"]).set_result(data)
+                finally:
+                    discovery.cancel()
+                    self.ws = None
+                    for fut in self.pending.values():
+                        fut.cancel()
+                    self.pending.clear()
 
     async def call(self, ws, type_: str, **payload):
         """Anfrage senden und auf die passende Antwort warten (nur vor dem Abo)."""
@@ -124,12 +145,52 @@ class Learner:
                     raise RuntimeError(f"{type_} fehlgeschlagen: {msg.get('error')}")
                 return msg.get("result")
 
+    async def discover(self):
+        try:
+            await self.suggester.discover()
+        except Exception:  # noqa: BLE001
+            log.exception("Erkennung von Handys/Lautsprechern fehlgeschlagen")
+
+    async def request(self, type_: str, **payload):
+        """Anfrage während des laufenden Abos – die Antwort kommt über die Hauptschleife."""
+        if self.ws is None:
+            raise RuntimeError("keine Verbindung zu Home Assistant")
+        msg_id = self.next_id()
+        fut = asyncio.get_running_loop().create_future()
+        self.pending[msg_id] = fut
+        await self.ws.send_json({"id": msg_id, "type": type_, **payload})
+        msg = await asyncio.wait_for(fut, 15)
+        if not msg.get("success", True):
+            raise RuntimeError(f"{type_} fehlgeschlagen: {msg.get('error')}")
+        return msg.get("result")
+
+    async def call_service(self, domain: str, service: str, data: dict) -> str | None:
+        """Dienst aufrufen; liefert die Kontext-ID, damit eigene Aktionen erkennbar sind."""
+        result = await self.request("call_service", domain=domain, service=service,
+                                    service_data=data)
+        ctx_id = ((result or {}).get("context") or {}).get("id")
+        if ctx_id:
+            self.own_contexts[ctx_id] = True
+            while len(self.own_contexts) > MAX_CONTEXTS:
+                self.own_contexts.popitem(last=False)
+        return ctx_id
+
+    async def rest(self, method: str, path: str, payload=None):
+        """REST-API von Home Assistant über den Supervisor."""
+        async with self.session.request(
+                method, f"{REST_URL}{path}", json=payload,
+                headers={"Authorization": f"Bearer {TOKEN}"}) as resp:
+            if resp.status >= 400:
+                raise RuntimeError(f"{path}: HTTP {resp.status} {await resp.text()}")
+            return await resp.json()
+
     async def load_areas(self, ws):
         """Bereich je Entität – eigener Bereich, sonst der des Geräts."""
         devices = {d["id"]: d.get("area_id")
                    for d in await self.call(ws, "config/device_registry/list")}
         self.areas = {}
         for e in await self.call(ws, "config/entity_registry/list"):
+            self.platforms[e["entity_id"]] = e.get("platform", "")
             area = e.get("area_id") or devices.get(e.get("device_id"))
             if area:
                 self.areas[e["entity_id"]] = area
@@ -170,6 +231,9 @@ class Learner:
                 self.contexts.popitem(last=False)
 
     def dispatch(self, event: dict):
+        if event.get("event_type") == "mobile_app_notification_action":
+            self.suggester.on_notification_action(event)
+            return
         if event.get("event_type") in ("automation_triggered", "script_started"):
             self.remember_context(event)
             return
@@ -221,6 +285,8 @@ class Learner:
             return
 
         origin = classify(ctx, old_s, new_s)
+        if ctx.get("id") in self.own_contexts or ctx.get("parent_id") in self.own_contexts:
+            origin = "self"              # eigene Ansage o. Ä. – nie mitlernen
         automation = self.contexts.get(ctx.get("parent_id")) or self.contexts.get(ctx.get("id"))
         ts = dt.datetime.fromisoformat(event["time_fired"]).timestamp()
         self.store.add(ts=ts, entity_id=entity_id, old_state=old_s, new_state=new_s,
@@ -232,7 +298,7 @@ class Learner:
                   f" ({automation})" if automation else "")
         if origin in ("manual", "device"):
             key = f"{entity_id} → {analysis.outcome(entity_id, new_s, new_attrs)}"
-            self.shadow.on_action(ts, entity_id, key)
+            self.shadow.on_action(ts, entity_id, key, ctx.get("user_id"))
 
     def handle_trigger(self, event: dict):
         """Auslöser (Personen, Wecker, …): nur Zustandswechsel zählen."""
@@ -263,6 +329,7 @@ class Learner:
                 for line in lines + self.shadow.report():
                     log.info("%s", line)
                 self.shadow.set_patterns(patterns)
+                self.suggester.set_patterns(patterns)
             except Exception:  # noqa: BLE001 – Analyse darf die Erfassung nie stoppen
                 log.exception("Analyse fehlgeschlagen")
             await asyncio.sleep(24 * 3600)

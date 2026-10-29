@@ -19,7 +19,8 @@ Automationen vorschlägt – z. B. „nach dem Wecker nach ~10 min Licht aus“ 
 | 2 | Mustererkennung: Zeit- und Sonnenmuster (Ausgabe im Log) | ✅ v0.3.0 |
 | 3 | Schattenmodus: Vorhersagen live prüfen, Bilanz im Log | ✅ v0.4.0 |
 | 3b | Folgemuster, Kontext → Einstellung | geplant |
-| 4 | Vorschläge im Moment (Benachrichtigung, Ansage), Autopilot | geplant |
+| 4 | Vorschläge im Moment: Benachrichtigung, Ansage, Automation anlegen | ✅ v0.5.0 |
+| 4b | Autopilot je Muster | geplant |
 | 5 | Weboberfläche in der Seitenleiste | geplant |
 
 ## Herkunft von Ereignissen
@@ -35,6 +36,11 @@ Zu jeder Aktion speichert die App außerdem den Bereich, die auslösende
 Automation und eine Momentaufnahme des Kontexts (Sonnenhöhe, wer zuhause ist,
 aktive Mediaplayer). Details: [docs/konzept.md](docs/konzept.md).
 
+Handys (`notify.mobile_app_*`), Lautsprecher (Cast) und Personen erkennt die
+App selbst. Ein Vorschlag geht an das Handy der Person, die gehandelt hat –
+sonst an alle, die zuhause sind. „Übernehmen“ legt eine Automation
+`habit_learner_<nr>` an.
+
 Nur `manual` und `device` fließen später in die Mustererkennung ein.
 
 ## Optionen
@@ -44,6 +50,8 @@ Nur `manual` und `device` fließen später in die Mustererkennung ein.
 | `retention_days` | 180 | wie lange Ereignisse gespeichert bleiben |
 | `domains` | light, switch, scene, … | welche Entitätstypen beobachtet werden |
 | `exclude_users` | – | HA-Benutzer-IDs, die ignoriert werden (z. B. Gäste) |
+| `announce` | aus | kurze Ansage über einen Cast-Lautsprecher beim Vorschlag |
+| `quiet_start` / `quiet_end` | 22:00 / 07:00 | Ruhezeit ohne Ansagen |
 | `trigger_entities` | – | zusätzliche mögliche Auslöser, z. B. `sensor.<handy>_next_alarm`; Personen (`person.*`) werden immer erfasst |
 
 Die Daten liegen in `/data/habits.db` innerhalb der App und sind Teil

@@ -37,6 +37,7 @@ class Shadow:
         self.patterns: list[Pattern] = []
         self.open: list[Prediction] = []
         self.done_today: dict[str, dt.date] = {}   # pattern_id → Tag der letzten Vorhersage
+        self.on_hit = None                          # Rückruf (pattern_id, user_id, ts)
 
     def set_patterns(self, patterns: list[Pattern]):
         self.patterns = [p for p in patterns if p.ready]
@@ -100,7 +101,7 @@ class Shadow:
 
     # ------------------------------------------------------------ auswerten
 
-    def on_action(self, now: float, entity_id: str, key: str):
+    def on_action(self, now: float, entity_id: str, key: str, user_id: str | None = None):
         """Manuelle Aktion: passt sie zu einer offenen Vorhersage?"""
         for pred in list(self.open):
             if pred.pattern.entity_id != entity_id:
@@ -108,6 +109,8 @@ class Shadow:
             if key == pred.pattern.key:
                 delay = (now - pred.center_ts) / 60
                 self.close(pred, now, "treffer", delay)
+                if self.on_hit:
+                    self.on_hit(pattern_id(pred.pattern), user_id, now)
             else:
                 pred.deviated = True       # z. B. Zwischenstufe beim Dimmen
 

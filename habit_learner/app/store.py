@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS predictions (
     delay_min  REAL                   -- Abstand zur erwarteten Mitte
 );
 CREATE INDEX IF NOT EXISTS idx_predictions_pattern ON predictions(pattern, opened);
+
+-- Vorschläge an Menschen und ihre Antworten
+CREATE TABLE IF NOT EXISTS suggestions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern     TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    config      TEXT NOT NULL,           -- JSON: Automation, die angelegt würde
+    offered     REAL NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'offen',  -- offen | angenommen | abgelehnt | später
+    answered    REAL,
+    automation  TEXT                     -- ID der angelegten Automation
+);
+CREATE INDEX IF NOT EXISTS idx_suggestions_pattern ON suggestions(pattern, offered);
 """
 
 # Spalten, die nach v0.1 dazukamen – bestehende Datenbanken werden ergänzt.
@@ -103,6 +116,38 @@ class Store:
             "SELECT pattern, SUM(result = 'treffer'), COUNT(*) FROM predictions"
             " WHERE result IS NOT NULL AND opened >= ? GROUP BY pattern"
             " ORDER BY pattern", (cutoff,)).fetchall()
+
+    def add_suggestion(self, *, pattern, text, config, offered) -> int:
+        cur = self.db.execute(
+            "INSERT INTO suggestions (pattern, text, config, offered) VALUES (?,?,?,?)",
+            (pattern, text, json.dumps(config), offered))
+        self.db.commit()
+        return cur.lastrowid
+
+    def answer_suggestion(self, sid, *, status, answered, automation=None):
+        self.db.execute(
+            "UPDATE suggestions SET status = ?, answered = ?, automation = ? WHERE id = ?",
+            (status, answered, automation, sid))
+        self.db.commit()
+
+    def suggestion(self, sid) -> dict | None:
+        row = self.db.execute(
+            "SELECT pattern, text, config, status FROM suggestions WHERE id = ?",
+            (sid,)).fetchone()
+        if not row:
+            return None
+        return {"pattern": row[0], "text": row[1], "config": json.loads(row[2]),
+                "status": row[3]}
+
+    def last_suggestion(self, pattern) -> tuple[str, float] | None:
+        """Status und Zeitpunkt (Antwort, sonst Angebot) des jüngsten Vorschlags."""
+        return self.db.execute(
+            "SELECT status, COALESCE(answered, offered) FROM suggestions"
+            " WHERE pattern = ? ORDER BY id DESC LIMIT 1", (pattern,)).fetchone()
+
+    def offers_since(self, ts: float) -> int:
+        return self.db.execute(
+            "SELECT COUNT(*) FROM suggestions WHERE offered >= ?", (ts,)).fetchone()[0]
 
     def purge(self, retention_days: int) -> int:
         cutoff = time.time() - retention_days * 86400
