@@ -21,6 +21,7 @@ from collections import OrderedDict
 
 import aiohttp
 
+import analysis
 from store import Store
 
 OPTIONS_FILE = "/data/options.json"
@@ -226,11 +227,18 @@ class Learner:
         log.debug("auslöser  %s: %s → %s", entity_id, old_s, new_s)
 
     async def maintenance(self):
-        """Einmal täglich alte Daten löschen und Statistik loggen."""
+        """Einmal täglich alte Daten löschen, Statistik loggen und Muster suchen."""
         while True:
             removed = self.store.purge(self.retention_days)
             log.info("Datenbank: %s (%d alte Einträge gelöscht)",
                      self.store.stats(), removed)
+            try:
+                lines = analysis.report(analysis.analyse(self.store.db))
+                log.info("Analyse: %d Muster", len(lines))
+                for line in lines:
+                    log.info("%s", line)
+            except Exception:  # noqa: BLE001 – Analyse darf die Erfassung nie stoppen
+                log.exception("Analyse fehlgeschlagen")
             await asyncio.sleep(24 * 3600)
 
 

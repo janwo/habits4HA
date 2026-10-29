@@ -153,6 +153,37 @@ sich nur kurze Hinweise („Ich habe einen Vorschlag fürs Schlafzimmerlicht“)
 - **Daten:** was beobachtet wird, wie viele Ereignisse, Ausschlüsse,
   Löschen.
 
+### Vorschlag im Moment
+
+Ein bereites Muster wird vorgeschlagen, **direkt nachdem** du die Aktion
+selbst ausgeführt hast – nicht davor. Dann ist der Bezug klar und eine
+falsche Vorhersage kann nichts anrichten.
+
+- Benachrichtigung mit Knöpfen; zusätzlich kurze Ansage über den
+  Lautsprecher im selben Bereich („Ich hätte einen Vorschlag fürs
+  Wohnzimmerlicht – schau aufs Handy“). Cast-Lautsprecher können nicht
+  zuhören, die Antwort kommt übers Handy.
+- Keine Ansage nachts, kurz vor dem Schlafen oder wenn Medien laufen;
+  höchstens eine pro Tag, jeder Vorschlag nur einmal.
+
+### Schattenmodus und Autopilot (experimentell)
+
+1. **Schattenmodus** (immer an, unsichtbar): Die App sagt Aktionen live
+   voraus, führt sie aber nicht aus, und vergleicht mit dem, was du tust.
+   Ergibt eine gemessene Trefferquote je Muster, bevor irgendetwas
+   automatisch passiert.
+2. **Autopilot je Muster:** nach z. B. 10 von 10 Treffern im Schattenmodus
+   Frage „Soll ich das ab jetzt selbst machen?“. Danach handelt die App
+   selbst und meldet es sofort mit **Rückgängig**-Knopf. Rückgängig senkt
+   das Vertrauen stark; zweimal hintereinander → zurück in den Schattenmodus.
+3. **Echte Automation:** läuft ein Muster wochenlang ohne Korrektur, Angebot,
+   daraus eine normale HA-Automation zu machen.
+
+Grenzen: Option `autopilot` (Standard aus); nur Licht, Szenen, Medien –
+nie Schlösser, Alarm, Heizung, Rollläden nur ausdrücklich; nie bei
+Abwesenheit ohne Beleg. Eigene Aktionen (Autopilot, Ansagen) werden
+markiert und nicht mitgelernt.
+
 ### Einstieg
 
 Nach der Installation ehrlich sagen, dass zunächst gesammelt wird:
@@ -161,11 +192,12 @@ die Auslöser-Kandidaten (Wecker, Personen) anbieten statt sie suchen zu lassen.
 
 ## 5. Reihenfolge
 
-1. Datensammlung erweitern: auslösende Automation, Bereich, Kontext,
+1. ✅ Datensammlung erweitern: auslösende Automation, Bereich, Kontext,
    `trigger_entities`, Anwesenheit lückenlos
-2. Zeit- und Sonnenmuster, Ausgabe im Log
-3. Korrekturen / Trefferquote von Automationen
-4. Folgemuster und Szenen mit Auslöser-Analyse
-5. Kontext → Einstellung
-6. Benachrichtigungen mit Aktionen
+2. ✅ Analyse: Zeit- und Sonnenmuster, Ausgabe im Log
+3. Schattenmodus: live vorhersagen und vergleichen
+4. Vorschlag im Moment (Benachrichtigung, Ansage)
+5. Autopilot je Muster
+6. Folgemuster, Korrekturen, Kontext → Einstellung – gemessen über den
+   Schattenmodus
 7. Seitenleiste
