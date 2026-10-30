@@ -53,6 +53,23 @@ CREATE TABLE IF NOT EXISTS suggestions (
     paused      REAL                     -- pausiert seit
 );
 CREATE INDEX IF NOT EXISTS idx_suggestions_pattern ON suggestions(pattern, offered);
+
+-- Autopilot: freigegebene Muster und was er geschaltet hat
+CREATE TABLE IF NOT EXISTS autopilot (
+    pattern  TEXT PRIMARY KEY,
+    status   TEXT NOT NULL,            -- aktiv | aus
+    changed  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS autopilot_runs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern    TEXT NOT NULL,
+    entity_id  TEXT NOT NULL,
+    ts         REAL NOT NULL,
+    expected   TEXT NOT NULL,
+    prev       TEXT,                   -- JSON: Zustand davor, für Rückgängig
+    result     TEXT                    -- NULL | rückgängig
+);
+CREATE INDEX IF NOT EXISTS idx_autopilot_runs ON autopilot_runs(pattern, ts);
 """
 
 # Spalten, die nach v0.1 dazukamen – bestehende Datenbanken werden ergänzt.
@@ -122,8 +139,66 @@ class Store:
         cutoff = time.time() - days * 86400
         return self.db.execute(
             "SELECT pattern, SUM(result = 'treffer'), COUNT(*) FROM predictions"
-            " WHERE result IS NOT NULL AND opened >= ? GROUP BY pattern"
+            " WHERE result IS NOT NULL AND result != 'autopilot' AND opened >= ?"
+            " GROUP BY pattern"
             " ORDER BY pattern", (cutoff,)).fetchall()
+
+    def last_predictions(self, pattern: str, n: int, since: float = 0) -> list[str]:
+        """Ergebnisse der jüngsten Vorhersagen (ohne Autopilot-Läufe), neueste zuerst."""
+        return [r[0] for r in self.db.execute(
+            "SELECT result FROM predictions WHERE pattern = ? AND result IS NOT NULL"
+            " AND result != 'autopilot' AND opened >= ? ORDER BY id DESC LIMIT ?",
+            (pattern, since, n))]
+
+    def autopilot(self) -> dict[str, tuple[str, float]]:
+        return {p: (s, c) for p, s, c in self.db.execute(
+            "SELECT pattern, status, changed FROM autopilot")}
+
+    def set_autopilot(self, pattern: str, status: str, now: float):
+        self.db.execute(
+            "INSERT INTO autopilot (pattern, status, changed) VALUES (?,?,?)"
+            " ON CONFLICT(pattern) DO UPDATE SET status = excluded.status,"
+            " changed = excluded.changed", (pattern, status, now))
+        self.db.commit()
+
+    def add_autopilot_run(self, *, pattern, entity_id, ts, expected, prev) -> int:
+        cur = self.db.execute(
+            "INSERT INTO autopilot_runs (pattern, entity_id, ts, expected, prev)"
+            " VALUES (?,?,?,?,?)", (pattern, entity_id, ts, expected, json.dumps(prev)))
+        self.db.commit()
+        return cur.lastrowid
+
+    def autopilot_run(self, rid) -> dict | None:
+        row = self.db.execute(
+            "SELECT id, pattern, entity_id, ts, expected, prev, result"
+            " FROM autopilot_runs WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            return None
+        keys = ("id", "pattern", "entity_id", "ts", "expected", "prev", "result")
+        run = dict(zip(keys, row))
+        run["prev"] = json.loads(run["prev"]) if run["prev"] else None
+        return run
+
+    def recent_autopilot_run(self, entity_id: str, since: float) -> dict | None:
+        row = self.db.execute(
+            "SELECT id FROM autopilot_runs WHERE entity_id = ? AND ts >= ?"
+            " AND result IS NULL ORDER BY id DESC LIMIT 1", (entity_id, since)).fetchone()
+        return self.autopilot_run(row[0]) if row else None
+
+    def undo_autopilot_run(self, rid):
+        self.db.execute("UPDATE autopilot_runs SET result = 'rückgängig' WHERE id = ?", (rid,))
+        self.db.commit()
+
+    def autopilot_results(self, pattern: str, n: int) -> list[str | None]:
+        return [r[0] for r in self.db.execute(
+            "SELECT result FROM autopilot_runs WHERE pattern = ? ORDER BY id DESC LIMIT ?",
+            (pattern, n))]
+
+    def autopilot_counts(self) -> dict[str, tuple[int, int]]:
+        """pattern → (Läufe, davon rückgängig)."""
+        return {p: (n, u) for p, n, u in self.db.execute(
+            "SELECT pattern, COUNT(*), SUM(result = 'rückgängig') FROM autopilot_runs"
+            " GROUP BY pattern")}
 
     def add_suggestion(self, *, pattern, text, config, offered) -> int:
         cur = self.db.execute(

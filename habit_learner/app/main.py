@@ -24,6 +24,7 @@ import aiohttp
 
 import analysis
 import web
+from autopilot import Autopilot
 from review import Reviewer
 from shadow import Shadow
 from suggest import Suggester
@@ -85,6 +86,8 @@ class Learner:
         self.analysed_at: float | None = None
         self.shadow.on_hit = self.suggester.on_hit
         self.reviewer = Reviewer(self)
+        self.autopilot = Autopilot(self, opts)
+        self.shadow.on_autopilot = self.autopilot.on_act
 
     def next_id(self) -> int:
         self.msg_id += 1
@@ -238,6 +241,7 @@ class Learner:
     def dispatch(self, event: dict):
         if event.get("event_type") == "mobile_app_notification_action":
             self.suggester.on_notification_action(event)
+            self.autopilot.on_notification_action(event)
             return
         if event.get("event_type") in ("automation_triggered", "script_started"):
             self.remember_context(event)
@@ -303,7 +307,10 @@ class Learner:
                   f" ({automation})" if automation else "")
         if origin in ("manual", "device"):
             key = f"{entity_id} → {analysis.outcome(entity_id, new_s, new_attrs)}"
-            self.shadow.on_action(ts, entity_id, key, ctx.get("user_id"))
+            self.shadow.on_action(ts, entity_id, key, ctx.get("user_id"),
+                                  old_key=self.current_key(entity_id), states=self.states,
+                                  current_key=self.current_key)
+            self.autopilot.on_manual(ts, entity_id, key)
 
     def handle_trigger(self, event: dict):
         """Auslöser (Personen, Wecker, …): nur Zustandswechsel zählen."""
@@ -320,6 +327,9 @@ class Learner:
                        user_id=ctx.get("user_id"), context_id=ctx.get("id"),
                        kind="trigger", area_id=self.areas.get(entity_id))
         log.debug("auslöser  %s: %s → %s", entity_id, old_s, new_s)
+        if new_s not in IGNORED_STATES:
+            self.shadow.on_trigger(ts, analysis.trigger_key(entity_id, new_s),
+                                   self.states, self.current_key)
 
     async def maintenance(self):
         """Einmal täglich alte Daten löschen, Statistik loggen und Muster suchen."""
@@ -341,6 +351,7 @@ class Learner:
             log.info("%s", line)
         self.shadow.set_patterns(patterns)
         self.suggester.set_patterns(patterns)
+        self.autopilot.refresh(patterns)
         self.patterns, self.analysed_at = patterns, time.time()
 
     async def ticker(self):
@@ -361,6 +372,7 @@ class Learner:
                 continue
             try:
                 await self.reviewer.check(time.time())
+                self.autopilot.refresh(self.patterns)
             except Exception:  # noqa: BLE001
                 log.exception("Nachmessen fehlgeschlagen")
 

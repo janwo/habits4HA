@@ -13,7 +13,7 @@ import datetime as dt
 import logging
 import time
 
-from analysis import DAY_GROUPS, Pattern
+from analysis import DAY_GROUPS, PARTS, Pattern
 from shadow import pattern_id
 
 log = logging.getLogger("habit_learner")
@@ -32,12 +32,61 @@ SERVICES = {   # Domain → (Zielzustand → Dienst)
 LIGHT_ATTRS = ("brightness", "color_temp_kelvin")
 
 
-def build_automation(p: Pattern, name: str) -> dict | None:
-    """Automation, die das Muster umsetzt – None, wenn es sich nicht abbilden lässt."""
-    domain = p.entity_id.split(".", 1)[0]
-    service = SERVICES.get(domain, {}).get(p.target_state)
+def service_call(entity_id: str, state: str, attrs: dict) -> dict | None:
+    """Dienstaufruf, der eine Entität in den Zustand bringt – Licht mit Helligkeit/Farbe."""
+    domain = entity_id.split(".", 1)[0]
+    service = SERVICES.get(domain, {}).get(state)
+    if domain == "scene":
+        service = "turn_on"
     if not service:
         return None
+    data = {}
+    if domain == "light" and state == "on":
+        data = {k: attrs[k] for k in LIGHT_ATTRS if k in attrs}
+        if "color_temp_kelvin" not in data and attrs.get("hs_color"):
+            data["hs_color"] = attrs["hs_color"]
+    action = {"action": f"{domain}.{service}", "target": {"entity_id": entity_id}}
+    if data:
+        action["data"] = data
+    return action
+
+
+def part_condition(part: str) -> dict:
+    _, a, b = next(x for x in PARTS if x[0] == part)
+    return {"condition": "time", "after": f"{a:02d}:00:00", "before": f"{b:02d}:00:00"}
+
+
+def build_automation(p: Pattern, name: str) -> dict | None:
+    """Automation, die das Muster umsetzt – None, wenn es sich nicht abbilden lässt."""
+    conditions = [{"condition": "numeric_state", "entity_id": "zone.home", "above": 0}]
+    base = {"alias": f"Gewohnheit: {name} {describe_action(p)}",
+            "description": f"Angelegt vom Habit Learner – {p.describe()}",
+            "mode": "single"}
+    if p.anchor == "kontext":
+        choose = []
+        for part, setting in p.settings.items():
+            action = service_call(p.entity_id, "on", setting["attrs"])
+            if action:
+                choose.append({"conditions": [part_condition(part)], "sequence": [action]})
+        if not choose:
+            return None
+        return {**base,
+                "triggers": [{"trigger": "state", "entity_id": p.entity_id,
+                              "from": "off", "to": "on"}],
+                "conditions": conditions, "actions": [{"choose": choose}]}
+    action = service_call(p.entity_id, p.target_state, p.target_attrs)
+    if not action:
+        return None
+    if p.anchor == "folge":
+        entity, _, state = p.trigger.partition(" → ")
+        trigger = {"trigger": "state", "entity_id": entity}
+        if state != "geändert":
+            trigger["to"] = state
+        actions = [action]
+        if round(p.center) >= 1:
+            actions.insert(0, {"delay": {"minutes": round(p.center)}})
+        return {**base, "triggers": [trigger], "conditions": conditions,
+                "actions": actions, "mode": "restart"}
     if p.anchor == "zeit":
         m = round(p.center) % 1440
         trigger = {"trigger": "time", "at": f"{m // 60:02d}:{m % 60:02d}:00"}
@@ -45,26 +94,10 @@ def build_automation(p: Pattern, name: str) -> dict | None:
         trigger = {"trigger": "numeric_state", "entity_id": "sun.sun",
                    "attribute": "elevation",
                    ("above" if p.rising else "below"): round(p.center, 1)}
-    conditions = [{"condition": "numeric_state", "entity_id": "zone.home", "above": 0}]
     if p.days != "täglich":
         conditions.append({"condition": "time",
                            "weekday": [WEEKDAYS[d] for d in sorted(DAY_GROUPS[p.days])]})
-    data = {}
-    if domain == "light" and p.target_state == "on":
-        data = {k: p.target_attrs[k] for k in LIGHT_ATTRS if k in p.target_attrs}
-        if "color_temp_kelvin" not in data and p.target_attrs.get("hs_color"):
-            data["hs_color"] = p.target_attrs["hs_color"]
-    action = {"action": f"{domain}.{service}", "target": {"entity_id": p.entity_id}}
-    if data:
-        action["data"] = data
-    return {
-        "alias": f"Gewohnheit: {name} {describe_action(p)}",
-        "description": f"Angelegt vom Habit Learner – {p.describe()}",
-        "triggers": [trigger],
-        "conditions": conditions,
-        "actions": [action],
-        "mode": "single",
-    }
+    return {**base, "triggers": [trigger], "conditions": conditions, "actions": [action]}
 
 
 def describe_action(p: Pattern) -> str:
@@ -72,6 +105,10 @@ def describe_action(p: Pattern) -> str:
 
 
 def describe_when(p: Pattern) -> str:
+    if p.anchor == "folge":
+        entity, _, state = p.trigger.partition(" → ")
+        what = "geändert wird" if state == "geändert" else f"auf „{state}“ wechselt"
+        return f"etwa {round(p.center)} min nachdem {entity} {what}"
     days = "" if p.days == "täglich" else f"{p.days} "
     if p.anchor == "zeit":
         m = round(p.center) % 1440
@@ -155,8 +192,13 @@ class Suggester:
         if not config:
             log.debug("Vorschlag %s lässt sich nicht als Automation abbilden", pid)
             return
-        text = (f"Du schaltest {name} {describe_when(p)} {describe_action(p)} – "
-                f"an {p.hits} von {p.chances} Tagen. Soll ich das künftig automatisch machen?")
+        if p.anchor == "kontext":
+            text = (f"Du stellst {name} beim Einschalten je nach Tageszeit ein ({p.when()}) – "
+                    f"{p.hits} von {p.chances} Mal. Soll ich das künftig automatisch machen?")
+        else:
+            text = (f"Du schaltest {name} {describe_when(p)} {describe_action(p)} – "
+                    f"{p.hits} von {p.chances} {'Tagen' if p.unit == 'Tagen' else 'Mal'}. "
+                    f"Soll ich das künftig automatisch machen?")
         sid = self.l.store.add_suggestion(pattern=pid, text=text, config=config, offered=now)
         log.info("VORSCHLAG gesendet: %s", text)
         actions = [{"action": f"{ACTION_PREFIX}{a}_{sid}", "title": t}

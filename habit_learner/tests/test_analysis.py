@@ -38,10 +38,11 @@ def build(path: str) -> float:
         d = dt.datetime.combine(START + dt.timedelta(days=day), dt.time(), ZONE)
         return (d + dt.timedelta(minutes=minute)).timestamp()
 
-    def action(day, minute, entity_id, state, attrs=None, origin="manual", automation=None):
+    def action(day, minute, entity_id, state, attrs=None, origin="manual", automation=None,
+               old=None):
         elev, rising = sun(day, minute)
         home = [] if day in VACATION else ["person.alex"]
-        store.add(ts=at(day, minute), entity_id=entity_id, old_state=None, new_state=state,
+        store.add(ts=at(day, minute), entity_id=entity_id, old_state=old, new_state=state,
                   attributes=attrs, origin=origin, user_id="u", context_id=None,
                   automation=automation,
                   context={"sun_elevation": elev, "sun_rising": rising, "home": home})
@@ -49,6 +50,11 @@ def build(path: str) -> float:
     def person(day, minute, state):
         store.add(ts=at(day, minute), entity_id="person.alex", old_state=None,
                   new_state=state, attributes=None, origin="device", user_id=None,
+                  context_id=None, kind="trigger")
+
+    def alarm(day, minute):
+        store.add(ts=at(day, minute), entity_id="input_datetime.wecker", old_state="07:00:00",
+                  new_state="06:30:00", attributes=None, origin="manual", user_id="u",
                   context_id=None, kind="trigger")
 
     person(0, 0, "home")
@@ -71,8 +77,9 @@ def build(path: str) -> float:
 
         # 3) Schlafzimmer aus 5 min nach Wecker stellen – Wecker zu wechselnden Zeiten
         if not away:
-            alarm = rnd.uniform(22 * 60, 24 * 60 + 30)
-            action(day, (alarm + 5) % 1440, "light.schlafzimmer", "off")
+            minute = rnd.uniform(22 * 60, 23 * 60 + 50)
+            alarm(day, minute)
+            action(day, minute + 5 + rnd.gauss(0, 0.5), "light.schlafzimmer", "off")
 
         # 4) Flur: Automation um 18:00, manchmal auch von Hand
         if not away:
@@ -80,6 +87,17 @@ def build(path: str) -> float:
                    automation="automation.flur")
             if rnd.random() < 0.3:
                 action(day, 18 * 60 + rnd.gauss(0, 3), "light.flur", "on")
+
+        # 6) Tischlampe zu wechselnden Zeiten an: morgens warmweiß, abends rot
+        if not away:
+            m = rnd.uniform(6 * 60, 9 * 60)
+            action(day, m, "light.tisch", "on", {"brightness": 128, "color_temp_kelvin": 2700},
+                   old="off")
+            action(day, m + 60, "light.tisch", "off", old="on")
+            m = rnd.uniform(18 * 60, 21 * 60 + 30)
+            action(day, m, "light.tisch", "on", {"brightness": 64, "hs_color": [0, 100],
+                                                  "color_mode": "hs"}, old="off")
+            action(day, m + 30, "light.tisch", "off", old="on")
 
         # 5) Rauschen: Küche zu zufälligen Zeiten
         if not away and rnd.random() < 0.5:
@@ -110,7 +128,17 @@ def main():
     assert abs(wohn.center + 3) < 1, wohn.center
     assert "50 % warm" in wohn.key, wohn.key
 
-    assert "light.schlafzimmer" not in ready, "Wecker-Muster darf nicht als Uhrzeit erscheinen"
+    schlaf = found["light.schlafzimmer"]
+    assert schlaf.ready and schlaf.anchor == "folge", schlaf
+    assert schlaf.trigger == "input_datetime.wecker → geändert" and abs(schlaf.center - 5) < 1
+
+    tisch = [p for p in patterns if p.entity_id == "light.tisch" and p.anchor == "kontext"]
+    assert tisch and tisch[0].ready, tisch
+    assert set(tisch[0].settings) == {"morgens", "abends"}, tisch[0].settings
+    assert "warm" in tisch[0].settings["morgens"]["key"]
+    assert "farbig" in tisch[0].settings["abends"]["key"]
+    assert not [p for p in patterns if p.entity_id == "light.tisch" and p.ready
+                and p.anchor != "kontext"], "Tischlampe hat keine feste Zeit"
     assert "light.kueche" not in ready, "Rauschen darf kein Muster sein"
     assert found["light.flur"].automated and "light.flur" not in ready, found["light.flur"]
     print("\nalle Prüfungen bestanden")

@@ -31,6 +31,7 @@ def pattern_json(p, names: dict) -> dict:
         "days": p.days,
         "hits": p.hits,
         "chances": p.chances,
+        "unit": p.unit,
         "rate": round(p.rate, 3),
         "spread": round(p.spread, 1),
         "other_spread": None if p.other_spread is None else round(p.other_spread, 1),
@@ -63,11 +64,16 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
         n = names()
         shadow = {pid: (hits, total)
                   for pid, hits, total in learner.store.prediction_stats(28)}
+        pilot = learner.store.autopilot()
+        counts = learner.store.autopilot_counts()
         patterns = []
         for p in learner.patterns:
             item = pattern_json(p, n)
             hits, total = shadow.get(item["id"], (0, 0))
             item["shadow"] = {"hits": hits, "total": total}
+            status = pilot.get(item["id"], (None,))[0]
+            runs, undone = counts.get(item["id"], (0, 0))
+            item["autopilot"] = {"status": status, "runs": runs, "undone": undone or 0}
             patterns.append(item)
         return {
             "analysed_at": learner.analysed_at,
@@ -82,7 +88,8 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
             "automations": automations(),
             "discovery": {"phones": len(learner.suggester.notify),
                           "speakers": len(learner.suggester.players()),
-                          "announce": learner.suggester.announce},
+                          "announce": learner.suggester.announce,
+                          "autopilot": learner.autopilot.enabled},
         }
 
     async def page(_):

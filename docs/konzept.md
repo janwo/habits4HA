@@ -197,7 +197,7 @@ die Auslöser-Kandidaten (Wecker, Personen) anbieten statt sie suchen zu lassen.
 2. ✅ Analyse: Zeit- und Sonnenmuster, Ausgabe im Log
 3. ✅ Schattenmodus: live vorhersagen und vergleichen
 4. ✅ Vorschlag im Moment (Benachrichtigung, Ansage)
-5. Autopilot je Muster
-6. Folgemuster, Korrekturen, Kontext → Einstellung – gemessen über den
+5. ✅ Autopilot je Muster
+6. ✅ Folgemuster, Kontext → Einstellung (offen: Korrekturen) – gemessen über den
    Schattenmodus
 7. ✅ Seitenleiste (erste Fassung: Anzeige, noch ohne Einstellen)

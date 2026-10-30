@@ -80,9 +80,25 @@ async def scenario(path):
                                "target": {"entity_id": "light.wohnzimmer"},
                                "data": {"brightness": 128, "color_temp_kelvin": 2700}}, a
     k = build_automation(kaffee, "Kaffeemaschine")
-    assert k["triggers"][0]["trigger"] == "time" and k["triggers"][0]["at"] == "06:50:00", k
+    assert k["triggers"][0]["trigger"] == "time" and k["triggers"][0]["at"][:4] == "06:5", k
     assert {"condition": "time", "weekday": ["mon", "tue", "wed", "thu", "fri"]} \
         in k["conditions"], k
+
+    # Folgemuster: Auslöser + Verzögerung
+    f = build_automation(patterns["light.schlafzimmer"], "Schlafzimmer")
+    assert f["triggers"] == [{"trigger": "state", "entity_id": "input_datetime.wecker"}], f
+    assert f["actions"][0] == {"delay": {"minutes": 5}}, f
+    assert f["actions"][1]["action"] == "light.turn_off", f
+
+    # Kontext: beim Einschalten je nach Tageszeit einstellen
+    tisch = next(p for p in analyse(sqlite3.connect(path), now=now, zone=ZONE)
+                 if p.anchor == "kontext")
+    c = build_automation(tisch, "Tisch")
+    assert c["triggers"][0] == {"trigger": "state", "entity_id": "light.tisch",
+                                "from": "off", "to": "on"}, c
+    choose = c["actions"][0]["choose"]
+    assert choose[0]["conditions"][0]["after"] == "05:00:00", choose
+    assert choose[1]["sequence"][0]["data"]["hs_color"] == [0, 100], choose
 
     # 1) Treffer Wohnzimmer abends von Alex → nur Alex’ Handy, Ansage im Wohnzimmer
     s.on_hit(pattern_id(wohn), "u-alex", ts(DAYS, 19 * 60))

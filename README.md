@@ -18,9 +18,9 @@ Automationen vorschlägt – z. B. „nach dem Wecker nach ~10 min Licht aus“ 
 | 1b | Kontext, Bereiche, auslösende Automation, Auslöser-Ereignisse | ✅ v0.2.0 |
 | 2 | Mustererkennung: Zeit- und Sonnenmuster (Ausgabe im Log) | ✅ v0.3.0 |
 | 3 | Schattenmodus: Vorhersagen live prüfen, Bilanz im Log | ✅ v0.4.0 |
-| 3b | Folgemuster, Kontext → Einstellung | geplant |
+| 3b | Folgemuster (Wecker → Licht aus), Kontext → Einstellung (Licht je Tageszeit) | ✅ v0.8.0 |
 | 4 | Vorschläge im Moment: Benachrichtigung, Ansage, Automation anlegen | ✅ v0.5.0 |
-| 4b | Autopilot je Muster | geplant |
+| 4b | Autopilot je Muster (experimentell, Option `autopilot`) | ✅ v0.8.0 |
 | 5 | Seitenleiste: Muster, Fortschritt zu den Schwellen, Schattenbilanz, Vorschläge | ✅ v0.6.0 |
 | 6 | Angelegte Automationen nachmessen; oft rückgängig → pausieren, nach 14 Tagen löschen | ✅ v0.7.0 |
 
@@ -53,6 +53,7 @@ Nur `manual` und `device` fließen später in die Mustererkennung ein.
 | `exclude_users` | – | HA-Benutzer-IDs, die ignoriert werden (z. B. Gäste) |
 | `announce` | aus | kurze Ansage über einen Cast-Lautsprecher beim Vorschlag |
 | `quiet_start` / `quiet_end` | 22:00 / 07:00 | Ruhezeit ohne Ansagen |
+| `autopilot` | aus | experimentell: nach 10 von 10 Treffern im Schattenmodus selbst schalten, jedes Mal mit „Rückgängig“ (nur Licht, Szenen, Medien) |
 | `trigger_entities` | – | zusätzliche mögliche Auslöser, z. B. `sensor.<handy>_next_alarm`; Personen (`person.*`) werden immer erfasst |
 
 Die Daten liegen in `/data/habits.db` innerhalb der App und sind Teil

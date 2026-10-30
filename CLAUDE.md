@@ -12,7 +12,7 @@ prüfen – Namen, E-Mails, Tokens, IPs, lokale Pfade, Entitäts- und
 Benutzer-IDs aus echten Installationen. Nur neutrale Platzhalter.
 
 **Tests:** `python3 habit_learner/tests/test_analysis.py`,
-`test_shadow.py`, `test_suggest.py`, `test_review.py` – laufen ohne Home Assistant.
+`test_shadow.py`, `test_suggest.py`, `test_review.py`, `test_autopilot.py` – laufen ohne Home Assistant.
 
 **Release:** Bei jeder Änderung am Add-on `version` in
 `habit_learner/config.yaml` erhöhen, sonst bietet HA kein Update an.

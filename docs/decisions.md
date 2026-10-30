@@ -114,7 +114,7 @@ wenn der Zielzustand schon besteht.
   zuhause“.
 
 ## D10 – Autopilot nur experimentell, opt-in, mit harten Grenzen
-2026-10-29 · geplant
+2026-10-29 · gilt (umgesetzt in v0.8.0, Details → D17)
 
 **Entscheidung:** Option `autopilot` (Standard aus). Freigabe je Muster erst
 nach z. B. 10/10 im Schattenmodus. Jede Aktion sofort mit Rückgängig melden;
@@ -167,3 +167,40 @@ Sie soll nicht ewig bleiben.
 - 14 Tage pausiert → gelöscht. Das Muster wird danach nicht erneut
   vorgeschlagen.
 - Nur eigene Automationen (`habit_learner_*`) werden angefasst.
+
+## D15 – Folgemuster: Auslöser → Aktion
+2026-10-30 · gilt
+
+**Entscheidung:** Auslöser sind die Auslöser-Ereignisse (`person.*`,
+`trigger_entities`), ohne die Ausgangszustände beim Verbinden. Zustände von
+Personen, Binärsensoren, Schaltern zählen einzeln; alles andere (z. B. ein
+Wecker als `input_datetime`) nur als „geändert“. Folgt eine Aktion
+höchstens 30 min auf den Auslöser, ist das ein Kandidat; gezählt wird pro
+Auftreten des Auslösers bei Anwesenheit. Der Kandidat tritt gegen Uhrzeit
+und Sonne an – geringste Streuung gewinnt (D05). Automation: Zustands-
+Auslöser, dann `delay`, `mode: restart`.
+
+## D16 – Kontextmuster: Lichteinstellung je Tageszeit
+2026-10-30 · gilt
+
+**Entscheidung:** Nur Lichter, nur Einschalten von Hand (aus → an).
+Tageszeiten: morgens 5–11, tagsüber 11–17, abends 17–22, nachts 22–5. Je
+Tageszeit mit ≥ 3 Einschaltvorgängen zählt die häufigste Einstellung, wenn
+sie ≥ 70 % ausmacht. Ein Kontextmuster entsteht erst bei ≥ 2 Tageszeiten mit
+unterschiedlicher Einstellung. Schattenmodus: nach dem Einschalten 60 s
+Zeit zum Einstellen. Automation: Auslöser aus → an, `choose` je Tageszeit.
+
+## D17 – Autopilot im Detail
+2026-10-30 · gilt
+
+**Entscheidung:**
+- Option `autopilot` (Standard aus). Freigabe je Muster nach 10 von 10
+  Treffern im Schattenmodus, nur für Licht, Szenen, Medien – und nicht, wenn
+  der Vorschlag angenommen, abgelehnt, pausiert oder gelöscht ist.
+- Der Schattenmodus schaltet zur erwarteten Mitte selbst; das Fenster zählt
+  als „autopilot“ und nicht in die Schattenbilanz.
+- Jede Aktion sofort aufs Handy mit „Rückgängig“ (stellt den Zustand davor
+  wieder her). Hand-Aktion innerhalb 15 min, die etwas anderes will, zählt
+  auch als Rückgängig.
+- Zweimal hintereinander rückgängig → Autopilot aus; Freigabe nur mit 10
+  neuen Treffern.

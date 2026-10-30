@@ -103,7 +103,12 @@ function bar(label, value, goal, progress) {
 
 function card(p, t, showBars) {
   const other = p.other_spread == null ? "" :
-    ` · ${p.anchor === "zeit" ? "Sonne" : "Uhrzeit"} hätte ±${Math.round(p.other_spread)} min`;
+    ` · ${p.anchor === "sonne" ? "Uhrzeit" : "Sonne"} hätte ±${Math.round(p.other_spread)} min`;
+  const kind = {zeit: "Uhrzeit", sonne: "Sonne", folge: "Folgemuster", kontext: "Kontext"}[p.anchor];
+  const ap = p.autopilot || {};
+  const pilot = ap.status === "aktiv"
+    ? `<span class="chip ok">Autopilot · ${ap.runs}× geschaltet, ${ap.undone}× rückgängig</span>`
+    : ap.status === "aus" ? `<span class="chip warn">Autopilot aus</span>` : "";
   const shadow = p.shadow.total
     ? `<span class="chip ${p.shadow.hits / p.shadow.total >= .8 ? "ok" : "warn"}">
          Schatten ${p.shadow.hits}/${p.shadow.total} richtig</span>` : "";
@@ -115,9 +120,10 @@ function card(p, t, showBars) {
     </div>` : "";
   return `<div class="card">
     <div class="row"><div><span class="title">${esc(p.name)}</span>
-      <span class="sub"> → ${esc(p.action)}</span></div>${shadow}</div>
-    <div class="why">${esc(p.when)} · ${p.hits} von ${p.chances} Tagen ·
-      Streuung ±${Math.round(p.spread)} min${esc(other)}</div>${bars}</div>`;
+      <span class="sub"> → ${esc(p.action)}</span> <span class="chip">${kind}</span></div>
+      <div>${pilot} ${shadow}</div></div>
+    <div class="why">${esc(p.when)} · ${p.hits} von ${p.chances} ${esc(p.unit)}${
+      p.anchor === "kontext" ? "" : ` · Streuung ±${Math.round(p.spread)} min`}${esc(other)}</div>${bars}</div>`;
 }
 
 function list(el, items, render, empty) {
@@ -158,6 +164,7 @@ function render(d) {
     ["davon von Hand", (st["action:manual"] || 0) + (st["action:device"] || 0)],
     ["Auslöser-Ereignisse", sum("trigger:")],
     ["Handys / Lautsprecher", `${d.discovery.phones} / ${d.discovery.speakers}`],
+    ["Autopilot", d.discovery.autopilot ? "an" : "aus"],
   ].map(([l, n]) => `<div class="card stat"><div class="n">${esc(n)}</div>
      <div class="sub">${l}</div></div>`).join("");
 
