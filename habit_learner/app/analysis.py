@@ -6,12 +6,19 @@ vorausgehenden Auslöser (Wecker, Heimkommen, …) hängt. Gewinner ist der
 Bezugspunkt mit der geringsten Streuung. Gezählt wird pro Gelegenheit (Tag
 mit Anwesenheit bzw. Auftreten des Auslösers), nicht nur pro Ereignis.
 
+Bereit ist ein Muster, wenn es mit ≥ 90 % Sicherheit an mehr als 60 % der
+Gelegenheiten auftritt (Beta-Verteilung über Treffer und Fehlschläge) – so
+zählen 5 von 5 und 30 von 50 unterschiedlich viel. Uhrzeiten werden als
+Kreis gerechnet; mehrere Zeitpunkte am Tag ergeben getrennte Muster. Hat
+sich eine Gewohnheit verschoben, zählt nur die Zeit seit der Verschiebung.
+
 Zusätzlich für Lichter: Hängt die Einstellung beim Einschalten von der
 Tageszeit ab (morgens warmweiß, abends rot), ist das ein Kontextmuster.
 """
 import bisect
 import datetime as dt
 import json
+import math
 import os
 import sqlite3
 import statistics
@@ -22,8 +29,8 @@ from zoneinfo import ZoneInfo
 
 WINDOW_DAYS = 56          # ausgewerteter Zeitraum
 MERGE_SECONDS = 10        # schnelle Folgeänderungen = eine Aktion
-MIN_HITS = 5
-MIN_RATE = 0.6
+MIN_RATE = 0.6           # Quote, die das Muster sicher übertreffen muss …
+CONFIDENCE = 0.9         # … mit dieser Wahrscheinlichkeit
 MAX_SPREAD = 20           # Minuten
 MIN_TOLERANCE = 10        # Minuten – Mindestfenster für Treffer
 MIN_PER_DEGREE = 4.5      # grobe Umrechnung Sonnenhöhe → Minuten
@@ -31,6 +38,10 @@ FOLLOW_MAX = 30           # Minuten – so lange darf eine Folgeaktion auf sich 
 CONTEXT_MIN_SHARE = 0.7   # Anteil der dominanten Einstellung je Tageszeit
 CONTEXT_MIN_ACTS = 3      # Einschaltvorgänge je Tageszeit, damit sie zählt
 PARTS = (("morgens", 5, 11), ("tagsüber", 11, 17), ("abends", 17, 22), ("nachts", 22, 5))
+CLUSTER_GAP = 120         # Minuten – getrennte Zeitpunkte am Tag
+CLUSTER_SIGMA = 20        # Minuten – Glättung der Tagesverteilung
+SHIFT_MIN = 15            # Minuten – ab hier gilt eine Verschiebung
+SEGMENT_MIN = 5           # Tage je Abschnitt vor/nach einer Verschiebung
 STATEFUL = ("person.", "binary_sensor.", "input_boolean.", "switch.", "device_tracker.")
 
 DAY_GROUPS = {
@@ -58,15 +69,20 @@ class Pattern:
     target_attrs: dict = field(default_factory=dict)
     trigger: str | None = None          # Folgemuster: "input_datetime.wecker → geändert"
     settings: dict = field(default_factory=dict)  # Kontext: Tageszeit → key, attrs, share
+    changed_at: float | None = None     # Gewohnheit hat sich hier verschoben
 
     @property
     def rate(self) -> float:
         return self.hits / self.chances if self.chances else 0.0
 
     @property
+    def confidence(self) -> float:
+        return confidence(self.hits, self.chances)
+
+    @property
     def ready(self) -> bool:
-        return (self.hits >= MIN_HITS and self.rate >= MIN_RATE
-                and self.spread <= MAX_SPREAD and not self.automated)
+        return (self.confidence >= CONFIDENCE and self.spread <= MAX_SPREAD
+                and not self.automated)
 
     @property
     def unit(self) -> str:
@@ -90,6 +106,8 @@ class Pattern:
         if self.other_spread is not None:
             other = "Uhrzeit" if self.anchor == "sonne" else "Sonne"
             text += f" ({other} hätte ±{self.other_spread:.0f} min)"
+        if self.changed_at:
+            text += f", verschoben seit {dt.datetime.fromtimestamp(self.changed_at):%d.%m.}"
         return text
 
 
@@ -204,15 +222,91 @@ def spread_of(values: list[float]) -> tuple[float, float]:
     return center, statistics.median(abs(v - center) for v in values)
 
 
-def clock_center(minutes: list[float]) -> tuple[float, float, int]:
-    """Wie spread_of, aber über Mitternacht hinweg (zweite Variante um 12 h verschoben)."""
+def confidence(hits: int, chances: int, rate: float = MIN_RATE) -> float:
+    """P(wahre Quote > rate) bei Beta(hits+1, misses+1) – exakt über die Binomialverteilung."""
+    if chances <= 0:
+        return 0.0
+    n = chances + 1
+    return sum(math.comb(n, k) * rate ** k * (1 - rate) ** (n - k)
+               for k in range(min(hits, n) + 1))
+
+
+def circular_mean(minutes: list[float]) -> float:
+    angles = [m / 1440 * 2 * math.pi for m in minutes]
+    a = math.atan2(sum(map(math.sin, angles)), sum(map(math.cos, angles)))
+    return (a / (2 * math.pi) * 1440) % 1440
+
+
+def unwrap(minutes: list[float]) -> tuple[list[float], float]:
+    """Uhrzeiten so drehen, dass ihr Kreismittel bei 12:00 liegt – dann linear rechnen."""
+    m0 = circular_mean(minutes)
+    return [(m - m0 + 720) % 1440 for m in minutes], m0
+
+
+def clock_center(minutes: list[float]) -> tuple[float, float]:
+    """Median und Abweichung von Uhrzeiten, über Mitternacht hinweg."""
+    vals, m0 = unwrap(minutes)
+    center, spread = spread_of(vals)
+    return (center + m0 - 720) % 1440, spread
+
+
+def time_clusters(actions: list[dict], zone) -> list[list[dict]]:
+    """Getrennte Zeitpunkte am Tag (z. B. morgens und abends) – Gipfel der geglätteten
+    Tagesverteilung, mindestens CLUSTER_GAP auseinander."""
+    if len(actions) < 6:
+        return [actions]
+    bins = 288
+    hist = [0.0] * bins
+    minutes = [minute_of_day(a["ts"], zone) for a in actions]
+    for m in minutes:
+        hist[int(m // 5) % bins] += 1
+    sigma = CLUSTER_SIGMA / 5
+    reach = int(3 * sigma)
+    kernel = [math.exp(-(d * d) / (2 * sigma * sigma)) for d in range(-reach, reach + 1)]
+    smooth = [sum(hist[(i + d) % bins] * kernel[d + reach] for d in range(-reach, reach + 1))
+              for i in range(bins)]
+    peaks = sorted((i for i in range(bins)
+                    if smooth[i] > 0 and smooth[i] >= smooth[i - 1]
+                    and smooth[i] > smooth[(i + 1) % bins]),
+                   key=lambda i: -smooth[i])
+    centers: list[float] = []
+    for i in peaks:
+        if all(clock_dist(i * 5, c) >= CLUSTER_GAP for c in centers):
+            centers.append(i * 5)
+    groups: list[list[dict]] = [[] for _ in centers]
+    for a, m in zip(actions, minutes):
+        groups[min(range(len(centers)), key=lambda j: clock_dist(m, centers[j]))].append(a)
+    groups = [g for g in groups if len(g) >= max(3, len(actions) * 0.15)]
+    return groups if len(groups) > 1 else [actions]
+
+
+def change_point(values: list[float], days: list[dt.date]) -> int | None:
+    """Index, ab dem sich eine Gewohnheit deutlich verschoben hat – oder None.
+    Zwei Abschnitte mit je eigenem Median erklären die Werte viel besser als einer."""
+    n = len(values)
+    if n < 2 * SEGMENT_MIN:
+        return None
+
+    def cost(vs):
+        c = statistics.median(vs)
+        return sum(abs(v - c) for v in vs)
+
+    total = cost(values)
     best = None
-    for shift in (0, 720):
-        vals = [(m + shift) % 1440 for m in minutes]
-        center, spread = spread_of(vals)
-        if best is None or spread < best[1]:
-            best = ((center - shift) % 1440, spread, shift)
-    return best
+    for k in range(SEGMENT_MIN, n - SEGMENT_MIN + 1):
+        c = cost(values[:k]) + cost(values[k:])
+        if best is None or c < best[0]:
+            best = (c, k)
+    c, k = best
+    shift = abs(statistics.median(values[k:]) - statistics.median(values[:k]))
+    if shift < SHIFT_MIN or c > 0.5 * total:
+        return None
+    # Ein Sprung, kein Wandern: Jeder Abschnitt muss für sich stabil sein.
+    # (Sonnenmuster wandern in Uhrzeit gemessen täglich ein paar Minuten.)
+    if change_point(values[:k], days[:k]) is not None or \
+            change_point(values[k:], days[k:]) is not None:
+        return None
+    return k
 
 
 def clock_dist(a: float, b: float) -> float:
@@ -221,7 +315,8 @@ def clock_dist(a: float, b: float) -> float:
 
 
 def evaluate(actions: list[dict], days_window: list[dt.date], zone, presence: Presence,
-             anchor: str, rising: bool | None, group: str) -> Pattern | None:
+             anchor: str, rising: bool | None, group: str,
+             detect_shift: bool = True) -> Pattern | None:
     weekdays = DAY_GROUPS[group]
     acts = [a for a in actions
             if dt.datetime.fromtimestamp(a["ts"], zone).weekday() in weekdays]
@@ -240,16 +335,33 @@ def evaluate(actions: list[dict], days_window: list[dt.date], zone, presence: Pr
 
     # Erst grob zentrieren, dann pro Tag nur das Ereignis nahe der Mitte werten.
     vals = [value(a) for a in acts]
-    center = clock_center(vals)[0] if anchor == "zeit" else statistics.median(vals)
+    if anchor == "zeit":
+        unwrapped, m0 = unwrap(vals)
+        center = (statistics.median(unwrapped) + m0 - 720) % 1440
+    else:
+        center = statistics.median(vals)
     per_day: dict[dt.date, dict] = {}
     for a in acts:
         day = dt.datetime.fromtimestamp(a["ts"], zone).date()
         if day not in per_day or dist(value(a), center) < dist(value(per_day[day]), center):
             per_day[day] = a
-    chosen = list(per_day.values())
+    chosen = sorted(per_day.values(), key=lambda a: a["ts"])
     vals = [value(a) for a in chosen]
+    if detect_shift:
+        linear = (unwrap(vals)[0] if anchor == "zeit"
+                  else [v * MIN_PER_DEGREE for v in vals])
+        k = change_point(linear, sorted(per_day))
+        if k is not None:
+            since = chosen[k]["ts"]
+            first_day = dt.datetime.fromtimestamp(since, zone).date()
+            p = evaluate([a for a in actions if a["ts"] >= since],
+                         [d for d in days_window if d >= first_day], zone, presence,
+                         anchor, rising, group, detect_shift=False)
+            if p:
+                p.changed_at = since
+            return p
     if anchor == "zeit":
-        center, spread, _ = clock_center(vals)
+        center, spread = clock_center(vals)
     else:
         center, spread = spread_of(vals)
         spread *= MIN_PER_DEGREE
@@ -343,7 +455,7 @@ def best_pattern(actions: list[dict], days_window, zone, presence,
 
     def score(p: Pattern):
         # Bereite Muster zuerst, dann höchste Trefferquote, dann geringste Streuung.
-        return (p.ready, round(p.rate, 1), -p.spread, p.hits)
+        return (p.ready, round(p.confidence, 2), -p.spread, p.hits)
 
     best = max(candidates.values(), key=score)
     # Eine Einschränkung auf Werktage/Wochenende muss sich deutlich lohnen,
@@ -385,29 +497,33 @@ def analyse(db: sqlite3.Connection, now: float | None = None, zone=None) -> list
 
     patterns = []
     for key, actions in by_key.items():
-        p = best_pattern(actions, days_window, zone, presence, triggers)
-        if not p:
-            continue
-        # Erledigt eine Automation dasselbe bereits zur selben Zeit?
-        auto = [a for a in automated_keys.get(key, [])
-                if clock_dist(minute_of_day(a["ts"], zone),
-                              statistics.median(minute_of_day(x["ts"], zone)
-                                                for x in actions)) <= 60]
-        if len(auto) >= max(3, p.chances // 2):
-            p.automated = True
-        patterns.append(p)
+        clusters = time_clusters(actions, zone)
+        overall = best_pattern(actions, days_window, zone, presence, triggers)
+        if len(clusters) == 1 or (overall and overall.anchor == "folge" and overall.ready):
+            found = [(overall, actions)]
+        else:                         # mehrere Zeitpunkte am Tag: je eigenes Muster
+            found = [(best_pattern(c, days_window, zone, presence), c) for c in clusters]
+        for p, acts in found:
+            if not p:
+                continue
+            # Erledigt eine Automation dasselbe bereits zur selben Zeit?
+            typical = clock_center([minute_of_day(x["ts"], zone) for x in acts])[0]
+            auto = [a for a in automated_keys.get(key, [])
+                    if clock_dist(minute_of_day(a["ts"], zone), typical) <= 60]
+            if len(auto) >= max(3, p.chances // 2):
+                p.automated = True
+            patterns.append(p)
     for entity_id, actions in lights.items():
         if p := context_pattern(entity_id, actions, zone):
             patterns.append(p)
-    patterns.sort(key=lambda p: (not p.ready, -p.rate, p.spread))
+    patterns.sort(key=lambda p: (not p.ready, -p.confidence, p.spread))
     return patterns
 
 
 def progress(p: Pattern) -> dict:
     """Wie nah ist ein Muster an den Schwellen? Je Kriterium 0…1, plus Gesamtwert."""
     parts = {
-        "hits": min(p.hits / MIN_HITS, 1.0),
-        "rate": min(p.rate / MIN_RATE, 1.0),
+        "confidence": min(p.confidence / CONFIDENCE, 1.0),
         "spread": min(MAX_SPREAD / p.spread, 1.0) if p.spread else 1.0,
     }
     return {**parts, "total": sum(parts.values()) / len(parts)}
@@ -418,7 +534,9 @@ def status(p: Pattern) -> str:
         return "erledigt"
     if p.ready:
         return "bereit"
-    return "beobachtet" if p.hits >= 2 and p.spread <= MAX_SPREAD * 1.5 else "schwach"
+    if p.hits >= 2 and p.spread <= MAX_SPREAD * 1.5 and p.rate >= MIN_RATE / 2:
+        return "beobachtet"
+    return "schwach"
 
 
 def report(patterns: list[Pattern]) -> list[str]:
@@ -429,7 +547,6 @@ def report(patterns: list[Pattern]) -> list[str]:
         elif p.automated:
             lines.append(f"ERLEDIGT   {p.describe()} – bereits automatisiert")
         elif status(p) == "beobachtet":
-            missing = max(MIN_HITS - p.hits, 0)
-            hint = f", noch ~{missing} Treffer" if missing else ""
+            hint = f", Sicherheit {p.confidence:.0%}"
             lines.append(f"BEOBACHTE  {p.describe()}{hint}")
     return lines

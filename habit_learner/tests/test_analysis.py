@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
-from analysis import analyse, report  # noqa: E402
+from analysis import analyse, confidence, report  # noqa: E402
 from store import Store  # noqa: E402
 
 ZONE = ZoneInfo("Europe/Berlin")
@@ -103,6 +103,16 @@ def build(path: str) -> float:
         if not away and rnd.random() < 0.5:
             action(day, rnd.uniform(7 * 60, 23 * 60), "light.kueche", "on")
 
+        # 7) Bad zweimal am Tag: morgens ~6:45, abends ~21:30
+        if not away:
+            action(day, 6 * 60 + 45 + rnd.gauss(0, 4), "light.bad", "on")
+            action(day, 21 * 60 + 30 + rnd.gauss(0, 4), "light.bad", "on")
+
+        # 8) Radio erst ~7:00, ab Tag 26 (neuer Job) ~8:15
+        if not away:
+            base = 7 * 60 if day < 26 else 8 * 60 + 15
+            action(day, base + rnd.gauss(0, 3), "switch.radio", "on")
+
     return at(DAYS, 0)
 
 
@@ -141,6 +151,20 @@ def main():
                 and p.anchor != "kontext"], "Tischlampe hat keine feste Zeit"
     assert "light.kueche" not in ready, "Rauschen darf kein Muster sein"
     assert found["light.flur"].automated and "light.flur" not in ready, found["light.flur"]
+    # Bayes: 5 von 5 reicht, 3 von 3 noch nicht; 30 von 50 ist zu unsicher
+    assert confidence(5, 5) >= 0.9 > confidence(3, 3), (confidence(5, 5), confidence(3, 3))
+    assert confidence(30, 50) < 0.9 < confidence(40, 50)
+
+    bad = sorted((p for p in patterns if p.entity_id == "light.bad" and p.ready),
+                 key=lambda p: p.center)
+    assert [round(p.center / 60) for p in bad] == [7, 22], [p.describe() for p in bad]
+    from shadow import pattern_id
+    assert len({pattern_id(p) for p in bad}) == 2, "zwei Zeitpunkte, zwei Muster"
+
+    radio = found["switch.radio"]
+    assert radio.ready and radio.changed_at, radio
+    assert abs(radio.center - (8 * 60 + 15)) < 5, radio.center
+    assert radio.chances <= DAYS - 26, radio.chances
     print("\nalle Prüfungen bestanden")
 
 

@@ -26,7 +26,9 @@ log = logging.getLogger("habit_learner")
 
 def pattern_id(p: Pattern) -> str:
     """Stabil über Tage hinweg, auch wenn sich die Mitte leicht verschiebt."""
-    if p.anchor == "sonne":
+    if p.anchor == "zeit":           # mehrere Zeitpunkte am Tag unterscheiden
+        anchor = f"zeit-{part_of_day(p.center)}"
+    elif p.anchor == "sonne":
         anchor = f"sonne-{'auf' if p.rising else 'ab'}"
     elif p.anchor == "folge":
         anchor = f"folge-{p.trigger}"

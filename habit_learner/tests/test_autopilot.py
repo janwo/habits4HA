@@ -14,7 +14,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from autopilot import MIN_RECORD, Autopilot  # noqa: E402
 from shadow import pattern_id  # noqa: E402
 from test_analysis import DAYS, ZONE  # noqa: E402
-from test_shadow import fresh, key, results  # noqa: E402
+from test_shadow import key, results  # noqa: E402
+import sqlite3  # noqa: E402
+from analysis import analyse  # noqa: E402
+from shadow import Shadow  # noqa: E402
+from store import Store  # noqa: E402
+from test_analysis import build  # noqa: E402
 
 TMP = os.environ.get("TMPDIR", "/tmp")
 WECKER = "input_datetime.wecker → geändert"
@@ -53,6 +58,18 @@ def evening(l, day, minute=22 * 60):
     l.states["light.schlafzimmer"] = {"state": "on", "attributes": {}}
     l.shadow.on_trigger(t0, WECKER, l.states, l.current_key)
     return t0
+
+
+def fresh(path):
+    if os.path.exists(path):
+        os.remove(path)
+    now = build(path)
+    store = Store(path)
+    shadow = Shadow(store, ZONE)
+    shadow.set_patterns([p for p in analyse(sqlite3.connect(path), now=now, zone=ZONE)
+                         if p.entity_id in ("light.schlafzimmer", "light.tisch")])
+    store.db.execute("DELETE FROM predictions")
+    return store, shadow
 
 
 async def scenario(path):

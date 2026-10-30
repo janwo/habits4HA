@@ -42,7 +42,7 @@
   .chip { display: inline-block; background: var(--chip); border-radius: 999px;
           padding: 2px 10px; font-size: 12px; color: var(--muted); }
   .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
-  .bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  .bars { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
   @media (max-width: 560px) { .bars { grid-template-columns: 1fr; } }
   .bar-label { display: flex; justify-content: space-between; font-size: 12px;
                color: var(--muted); margin-bottom: 4px; }
@@ -109,12 +109,14 @@ function card(p, t, showBars) {
   const pilot = ap.status === "aktiv"
     ? `<span class="chip ok">Autopilot · ${ap.runs}× geschaltet, ${ap.undone}× rückgängig</span>`
     : ap.status === "aus" ? `<span class="chip warn">Autopilot aus</span>` : "";
+  const moved = p.changed_at
+    ? ` · <span class="chip">verschoben seit ${time(p.changed_at).split(",")[0]}</span>` : "";
   const shadow = p.shadow.total
     ? `<span class="chip ${p.shadow.hits / p.shadow.total >= .8 ? "ok" : "warn"}">
          Schatten ${p.shadow.hits}/${p.shadow.total} richtig</span>` : "";
   const bars = showBars ? `<div class="bars">
-      ${bar("Treffer", p.hits, t.hits, p.progress.hits)}
-      ${bar("Quote", pct(p.rate) + " %", pct(t.rate) + " %", p.progress.rate)}
+      ${bar(`Sicherheit, dass > ${pct(t.rate)} %`, pct(p.confidence) + " %",
+            pct(t.confidence) + " %", p.progress.confidence)}
       ${bar("Streuung", "±" + Math.round(p.spread) + " min", "±" + t.spread + " min",
             p.progress.spread)}
     </div>` : "";
@@ -123,7 +125,7 @@ function card(p, t, showBars) {
       <span class="sub"> → ${esc(p.action)}</span> <span class="chip">${kind}</span></div>
       <div>${pilot} ${shadow}</div></div>
     <div class="why">${esc(p.when)} · ${p.hits} von ${p.chances} ${esc(p.unit)}${
-      p.anchor === "kontext" ? "" : ` · Streuung ±${Math.round(p.spread)} min`}${esc(other)}</div>${bars}</div>`;
+      p.anchor === "kontext" ? "" : ` · Streuung ±${Math.round(p.spread)} min`}${esc(other)}${moved}</div>${bars}</div>`;
 }
 
 function list(el, items, render, empty) {
@@ -136,7 +138,7 @@ function render(d) {
   const by = (s) => d.patterns.filter((p) => p.status === s);
   const watching = by("beobachtet").sort((a, b) => b.progress.total - a.progress.total);
   list("ready", by("bereit"), (p) => card(p, t, false),
-       "Noch nichts – Muster brauchen mindestens " + t.hits + " gleiche Tage.");
+       "Noch nichts – ein Muster braucht mindestens 4–5 gleiche Tage ohne Ausnahme.");
   list("watching", watching, (p) => card(p, t, true), "Noch keine wiederkehrenden Spuren.");
   list("weak", by("schwach"), (p) => card(p, t, true), "Keine.");
   $("weak-box").style.display = by("schwach").length ? "" : "none";

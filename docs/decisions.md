@@ -69,6 +69,7 @@ dem Wecker, nicht um 23:05). Bei Abwesenheit entstehen keine Ereignisse.
   Sonnenhöhe, später Ereignisse). Lassen sich Kandidaten nicht trennen:
   kein Vorschlag, sondern warten oder fragen.
 - Schwellen: ≥ 5 Treffer, ≥ 60 % der Gelegenheiten, Streuung ≤ 20 min.
+  **Treffer/Quote ersetzt durch D18**; die Streuung gilt weiter.
 - Werktags/Wochenende nur, wenn die Trefferquote dadurch um ≥ 15 Punkte
   steigt; sonst täglich.
 - Lieber wenige sichere Vorschläge als viele falsche.
@@ -204,3 +205,40 @@ Zeit zum Einstellen. Automation: Auslöser aus → an, `choose` je Tageszeit.
   auch als Rückgängig.
 - Zweimal hintereinander rückgängig → Autopilot aus; Freigabe nur mit 10
   neuen Treffern.
+
+## D18 – Sicherheit statt fester Treffer- und Quotenschwellen
+2026-10-30 · gilt (ersetzt die Treffer-/Quotenschwelle aus D05)
+
+**Kontext:** „≥ 5 Treffer und ≥ 60 %“ wertet 5 von 5 und 30 von 50 gleich,
+obwohl das eine viel sicherer ist.
+
+**Entscheidung:** Trefferquote als Beta(Treffer+1, Fehlschläge+1). Bereit,
+wenn P(Quote > 60 %) ≥ 90 % und Streuung ≤ 20 min. Exakt berechnet über
+die Binomialverteilung, ohne Bibliothek. Praktisch: 4 von 4 oder 5 von 5
+reichen, 3 von 3 nicht, 30 von 50 nicht, 40 von 50 schon. Die Oberfläche
+zeigt „Sicherheit“ statt Treffer und Quote.
+
+## D19 – Uhrzeiten als Kreis, mehrere Zeitpunkte am Tag
+2026-10-30 · gilt
+
+**Entscheidung:** Uhrzeiten werden um ihr Kreismittel gedreht und dann
+robust (Median/Abweichung) gerechnet – löst Mitternacht sauber. Die
+geglättete Tagesverteilung (σ 20 min) wird nach Gipfeln mit ≥ 120 min
+Abstand und ≥ 15 % der Aktionen getrennt; jeder Gipfel ist ein eigenes
+Muster (z. B. Bad morgens und abends). Ein bereites Folgemuster geht vor.
+Die Muster-ID von Zeitmustern enthält dafür die Tageszeit
+(`zeit-morgens`); ältere Vorhersagen/Vorschläge mit `zeit` werden nicht
+mehr zugeordnet.
+
+## D20 – Verschiebungen erkennen
+2026-10-30 · gilt
+
+**Kontext:** Über 56 Tage gemittelt braucht eine neue Gewohnheit (neuer
+Job, Zeitumstellung) Wochen, bis sie durchschlägt.
+
+**Entscheidung:** Je Muster wird der beste Bruchpunkt gesucht (zwei
+Abschnitte mit eigenem Median, je ≥ 5 Tage). Er gilt, wenn sich die Mitte um
+≥ 15 min verschiebt, die Abweichung sich mindestens halbiert und jeder
+Abschnitt für sich stabil ist – sonst ist es Wandern (z. B. ein
+Sonnenmuster in Uhrzeit gemessen), kein Sprung. Dann zählen nur Tage ab
+dem Bruch; die Oberfläche zeigt „verschoben seit …“.

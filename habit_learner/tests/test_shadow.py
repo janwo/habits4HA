@@ -67,7 +67,8 @@ def fresh(path):
     now = build(path)
     store = Store(path)
     shadow = Shadow(store, ZONE)
-    shadow.set_patterns(analyse(sqlite3.connect(path), now=now, zone=ZONE))
+    shadow.set_patterns([p for p in analyse(sqlite3.connect(path), now=now, zone=ZONE)
+                         if p.entity_id in ("switch.kaffee", "light.wohnzimmer")])
     store.db.execute("DELETE FROM predictions")
     return store, shadow
 
