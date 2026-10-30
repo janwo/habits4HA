@@ -42,14 +42,6 @@ def pattern_json(p, names: dict) -> dict:
     }
 
 
-def _numeric(state) -> bool:
-    try:
-        float(state)
-        return True
-    except (TypeError, ValueError):
-        return False
-
-
 def build_app(learner, allow_any: bool = False) -> web.Application:
     @web.middleware
     async def only_ingress(request, handler):
@@ -99,30 +91,9 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
             "discovery": {"phones": len(learner.suggester.notify),
                           "speakers": len(learner.suggester.players()),
                           "announce": learner.suggester.announce,
-                          "autopilot": learner.autopilot.enabled},
+                          "autopilot": learner.autopilot.enabled,
+                          "presence": list(learner.presence_entities)},
         }
-
-    def presence() -> dict:
-        candidates = sorted(
-            ({"entity_id": e, "name": s.get("attributes", {}).get("friendly_name") or e,
-              "state": s.get("state")}
-             for e, s in learner.states.items()
-             if e.split(".", 1)[0] in analysis.PRESENCE_DOMAINS
-             and (not e.startswith("sensor.") or _numeric(s.get("state")))),
-            key=lambda c: (c["entity_id"].split(".")[0], c["name"].lower()))
-        return {"selected": list(learner.presence_entities), "candidates": candidates}
-
-    async def api_presence(_):
-        return web.json_response(presence())
-
-    async def api_set_presence(request):
-        body = await request.json()
-        chosen = body.get("entities")
-        if not isinstance(chosen, list) or not all(
-                isinstance(e, str) and e in learner.states for e in chosen):
-            raise web.HTTPBadRequest(text="Unbekannte Entität")
-        learner.set_presence(chosen)
-        return web.json_response(presence())
 
     async def page(_):
         return web.FileResponse(PAGE, headers={"Cache-Control": "no-store"})
@@ -137,9 +108,7 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
     app = web.Application(middlewares=[only_ingress])
     app.add_routes([web.get("/", page),
                     web.get("/api/overview", api_overview),
-                    web.post("/api/analyse", api_analyse),
-                    web.get("/api/presence", api_presence),
-                    web.post("/api/presence", api_set_presence)])
+                    web.post("/api/analyse", api_analyse)])
     return app
 
 

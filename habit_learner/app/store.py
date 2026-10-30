@@ -70,12 +70,6 @@ CREATE TABLE IF NOT EXISTS autopilot_runs (
     result     TEXT                    -- NULL | rückgängig
 );
 CREATE INDEX IF NOT EXISTS idx_autopilot_runs ON autopilot_runs(pattern, ts);
-
--- Einstellungen aus der Oberfläche
-CREATE TABLE IF NOT EXISTS settings (
-    key    TEXT PRIMARY KEY,
-    value  TEXT NOT NULL              -- JSON
-);
 """
 
 # Spalten, die nach v0.1 dazukamen – bestehende Datenbanken werden ergänzt.
@@ -205,16 +199,6 @@ class Store:
         return {p: (n, u) for p, n, u in self.db.execute(
             "SELECT pattern, COUNT(*), SUM(result = 'rückgängig') FROM autopilot_runs"
             " GROUP BY pattern")}
-
-    def setting(self, key: str, default=None):
-        row = self.db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
-        return json.loads(row[0]) if row else default
-
-    def set_setting(self, key: str, value):
-        self.db.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?)"
-            " ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, json.dumps(value)))
-        self.db.commit()
 
     def add_suggestion(self, *, pattern, text, config, offered) -> int:
         cur = self.db.execute(

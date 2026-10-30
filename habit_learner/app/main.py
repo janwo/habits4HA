@@ -68,7 +68,7 @@ class Learner:
         self.exclude_users = set(opts.get("exclude_users", []))
         self.retention_days = int(opts.get("retention_days", 180))
         self.trigger_entities = set(opts.get("trigger_entities", []))
-        self.presence_entities: tuple[str, ...] = ()    # in der Oberfläche gewählt
+        self.presence_entities = tuple(opts.get("presence_entities", []))  # leer = Personen
         self.store = Store(DB_FILE)
         self.msg_id = 0
         self.states: dict[str, dict] = {}       # aktueller Zustand aller Entitäten
@@ -76,7 +76,6 @@ class Learner:
         self.contexts: OrderedDict[str, str] = OrderedDict()  # context_id → automation
         self.zone = analysis.tz()
         self.store.close_stale_predictions(time.time())
-        self.presence_entities = tuple(self.store.setting("presence_entities", []))
         self.shadow = Shadow(self.store, self.zone, self.presence_entities)
         self.ws = None
         self.session = None
@@ -154,19 +153,6 @@ class Learner:
                 if not msg.get("success", True):
                     raise RuntimeError(f"{type_} fehlgeschlagen: {msg.get('error')}")
                 return msg.get("result")
-
-    def set_presence(self, entities: list[str]):
-        """Anwesenheit der Wohnung – in der Oberfläche ausgewählt, leer = Personen."""
-        self.store.set_setting("presence_entities", list(entities))
-        self.presence_entities = self.shadow.presence_entities = tuple(entities)
-        log.info("Anwesenheit: %s", ", ".join(entities) or "Personen (person.*)")
-        now = time.time()
-        for entity_id in entities:      # Ausgangszustand, damit der Verlauf beginnt
-            if s := self.states.get(entity_id):
-                self.store.add(ts=now, entity_id=entity_id, old_state=None,
-                               new_state=s.get("state"), attributes=None, origin="system",
-                               user_id=None, context_id=None, kind="trigger")
-        self.run_analysis()
 
     async def discover(self):
         try:
@@ -403,6 +389,7 @@ async def main():
     )
     learner = Learner(opts)
     log.info("Habit Learner gestartet – beobachte: %s", ", ".join(sorted(learner.domains)))
+    log.info("Anwesenheit: %s", ", ".join(learner.presence_entities) or "Personen (person.*)")
     await web.start(learner)
     await asyncio.gather(learner.run(), learner.maintenance(), learner.ticker(),
                          learner.review())

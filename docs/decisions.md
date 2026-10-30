@@ -243,19 +243,19 @@ Abschnitt für sich stabil ist – sonst ist es Wandern (z. B. ein
 Sonnenmuster in Uhrzeit gemessen), kein Sprung. Dann zählen nur Tage ab
 dem Bruch; die Oberfläche zeigt „verschoben seit …“.
 
-## D21 – Anwesenheit als eigene Entität, ausgewählt in der Oberfläche
+## D21 – Anwesenheit als eigene Entität, in den Add-on-Optionen
 2026-10-30 · gilt
 
 **Kontext:** Anwesenheit gibt es oft als eine Entität für die ganze Wohnung,
-nicht nur über Personen. Eine Erkennung am Namen (v0.10.x) war geraten –
-der Nutzer will ausdrücklich wählen, keine Annahmen.
+nicht nur über Personen. Eine Erkennung am Namen (v0.10.x) war geraten; eine
+Auswahl in der Seitenleiste (v0.11.0) hätte die Einstellung auf zwei Orte
+verteilt. Beides verworfen.
 
-**Entscheidung:** Auswahl in der Seitenleiste (Einstellungen, Mehrfachauswahl
-aus `binary_sensor`, `input_boolean`, `group`, `zone`, `person`,
-`device_tracker` und Zahl-Sensoren), gespeichert in der Datenbank
-(Tabelle `settings`) – nicht in den Optionen, nicht im Repo. Ohne Auswahl:
-`person.*`. Mit Auswahl zählen nur die gewählten Entitäten.
-„Zuhause“ = `on`/`home`/`true` oder Zahl > 0. Gilt für Gelegenheiten,
-Schattenmodus, Kontext-Momentaufnahme und die Bedingung in angelegten
-Automationen. Allgemein: **nichts am Namen erraten** – erkennen nur, wo HA
-es eindeutig sagt (Integration, Dienst, Attribut wie bei D07).
+**Entscheidung:** Option `presence_entities` (Liste, Standard leer), wie alle
+anderen Einstellungen in den Add-on-Optionen. Leer: `person.*`. Gesetzt:
+nur diese Entitäten zählen. „Zuhause“ = `on`/`home`/`true` oder Zahl > 0.
+Gilt für Gelegenheiten, Schattenmodus, Kontext-Momentaufnahme und die
+Bedingung in angelegten Automationen. Die Seitenleiste zeigt die Wahl nur an.
+Allgemein: **nichts am Namen erraten** – erkennen nur, wo HA es eindeutig
+sagt (Integration, Dienst, Attribut wie bei D07); Einstellungen gehören in
+die Add-on-Optionen.

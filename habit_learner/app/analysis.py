@@ -150,10 +150,6 @@ def presence_sources(entity_id: str, presence_entities) -> bool:
     return entity_id.startswith("person.")
 
 
-PRESENCE_DOMAINS = ("binary_sensor", "input_boolean", "group", "sensor", "zone",
-                    "person", "device_tracker")
-
-
 def anyone_home(states: dict, presence_entities=()) -> bool:
     return any(is_home(e, s.get("state")) for e, s in states.items()
                if presence_sources(e, presence_entities))
