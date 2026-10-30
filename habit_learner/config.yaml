@@ -1,5 +1,5 @@
 name: Habit Learner
-version: "0.10.0"
+version: "0.10.1"
 slug: habit_learner
 description: Erkennt wiederkehrende manuelle Aktionen und schlägt Automationen vor
 url: https://github.com/janwo/habits4HA

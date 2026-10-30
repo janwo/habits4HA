@@ -153,6 +153,7 @@ async def scenario(path):
     states = {"binary_sensor.presence": {"state": "off"}, "person.alex": {"state": "home"},
               "binary_sensor.kueche_bewegung": {"state": "on"}}
     assert find_presence(states) == ("binary_sensor.presence",)
+    assert find_presence({"input_boolean.anwesend": {}, "zone.home": {}}) == ("input_boolean.anwesend",)
     assert anyone_home(states, ())                                   # ohne: Personen
     assert not anyone_home(states, ("binary_sensor.presence",))      # mit: nur sie zählt
     assert is_home("zone.home", "2") and not is_home("zone.home", "0")

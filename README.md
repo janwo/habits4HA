@@ -54,7 +54,7 @@ Nur `manual` und `device` fließen später in die Mustererkennung ein.
 | `announce` | aus | kurze Ansage über einen Cast-Lautsprecher beim Vorschlag |
 | `quiet_start` / `quiet_end` | 22:00 / 07:00 | Ruhezeit ohne Ansagen |
 | `autopilot` | aus | experimentell: nach 10 von 10 Treffern im Schattenmodus selbst schalten, jedes Mal mit „Rückgängig“ (nur Licht, Szenen, Medien) |
-| `presence_entities` | – (erkannt) | Anwesenheit der Wohnung als Entität, z. B. ein `binary_sensor`, `input_boolean`, `group` oder `zone.home`. Leer: eine Entität namens `presence`, `anwesenheit` oder `zuhause` wird erkannt, sonst gelten Personen (`person.*`) |
+| `presence_entities` | – (erkannt) | Anwesenheit der Wohnung als Entität, z. B. ein `binary_sensor`, `input_boolean`, `group` oder `zone.home`. Leer: eine Entität namens `presence`, `anwesenheit`, `anwesend` oder `zuhause` wird erkannt, sonst gelten Personen (`person.*`) |
 | `trigger_entities` | – | zusätzliche mögliche Auslöser, z. B. `sensor.<handy>_next_alarm`; Personen (`person.*`) werden immer erfasst |
 
 Die Daten liegen in `/data/habits.db` innerhalb der App und sind Teil

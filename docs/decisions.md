@@ -250,7 +250,7 @@ dem Bruch; die Oberfläche zeigt „verschoben seit …“.
 (z. B. `binary_sensor.presence`), nicht nur über Personen.
 
 **Entscheidung:** Option `presence_entities`. Leer: Entitäten namens
-`presence`, `anwesenheit` oder `zuhause` (binary_sensor, input_boolean,
+`presence`, `anwesenheit`, `anwesend`, `zuhause` (binary_sensor, input_boolean,
 group, sensor, zone) werden erkannt (→ D07, keine IDs im Repo); sonst
 `person.*`. Sind Anwesenheits-Entitäten gesetzt oder erkannt, zählen nur
 sie – Personen nicht mehr. „Zuhause“ = `on`/`home`/`true` oder Zahl > 0.

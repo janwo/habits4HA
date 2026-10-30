@@ -150,7 +150,7 @@ def presence_sources(entity_id: str, presence_entities) -> bool:
     return entity_id.startswith("person.")
 
 
-PRESENCE_NAMES = {"presence", "anwesenheit", "zuhause"}
+PRESENCE_NAMES = {"presence", "anwesenheit", "anwesend", "zuhause"}
 PRESENCE_DOMAINS = ("binary_sensor", "input_boolean", "group", "sensor", "zone")
 
 
