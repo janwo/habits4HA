@@ -150,15 +150,8 @@ def presence_sources(entity_id: str, presence_entities) -> bool:
     return entity_id.startswith("person.")
 
 
-PRESENCE_NAMES = {"presence", "anwesenheit", "anwesend", "zuhause"}
-PRESENCE_DOMAINS = ("binary_sensor", "input_boolean", "group", "sensor", "zone")
-
-
-def find_presence(states: dict) -> tuple[str, ...]:
-    """Anwesenheits-Entität der ganzen Wohnung am Namen erkennen (z. B. binary_sensor.presence)."""
-    return tuple(sorted(e for e in states
-                        if e.split(".", 1)[0] in PRESENCE_DOMAINS
-                        and e.split(".", 1)[1] in PRESENCE_NAMES))
+PRESENCE_DOMAINS = ("binary_sensor", "input_boolean", "group", "sensor", "zone",
+                    "person", "device_tracker")
 
 
 def anyone_home(states: dict, presence_entities=()) -> bool:

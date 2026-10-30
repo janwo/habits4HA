@@ -1,5 +1,5 @@
 name: Habit Learner
-version: "0.10.1"
+version: "0.11.0"
 slug: habit_learner
 description: Erkennt wiederkehrende manuelle Aktionen und schlägt Automationen vor
 url: https://github.com/janwo/habits4HA
@@ -27,7 +27,6 @@ options:
     - cover
   exclude_users: []
   trigger_entities: []
-  presence_entities: []
   announce: false
   quiet_start: "22:00"
   quiet_end: "07:00"
@@ -40,8 +39,6 @@ schema:
   exclude_users:
     - str
   trigger_entities:
-    - str
-  presence_entities:
     - str
   announce: bool
   quiet_start: match(^\d{2}:\d{2}$)

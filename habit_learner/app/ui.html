@@ -55,6 +55,9 @@
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .stat .n { font-size: 22px; font-weight: 600; }
   .error { color: #c0392b; }
+  select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
+           border-radius: 8px; padding: 6px; width: 100%; min-height: 140px; }
+  .settings-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -82,6 +85,16 @@
 
   <h2>Vorschläge und Antworten</h2>
   <div id="suggestions"></div>
+
+  <h2>Einstellungen</h2>
+  <div class="card">
+    <div class="title">Anwesenheit</div>
+    <div class="why">Woran erkennt das Add-on, dass jemand zuhause ist? Mehrfachauswahl mit
+      Strg/⌘. Ohne Auswahl zählen die Personen (<code>person.*</code>).</div>
+    <select id="presence" multiple></select>
+    <div class="settings-row"><button class="primary" id="save-presence">Speichern</button>
+      <span class="sub" id="presence-status"></span></div>
+  </div>
 
   <h2>Daten</h2>
   <div class="stats" id="stats"></div>
@@ -191,7 +204,31 @@ $("analyse").onclick = async (ev) => {
   await load("POST", "api/analyse");
   ev.target.disabled = false;
 };
+async function loadPresence(method = "GET", body) {
+  try {
+    const r = await fetch("api/presence", body ? {method, body: JSON.stringify(body),
+      headers: {"Content-Type": "application/json"}} : {});
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    $("presence").innerHTML = d.candidates.map((c) => `<option value="${esc(c.entity_id)}"
+      ${d.selected.includes(c.entity_id) ? "selected" : ""}>${esc(c.name)} · ${esc(c.entity_id)}
+      (${esc(c.state)})</option>`).join("");
+    $("presence-status").textContent = d.selected.length
+      ? "Aktiv: " + d.selected.join(", ") : "Aktiv: Personen";
+    return true;
+  } catch (e) {
+    $("presence-status").textContent = "Fehler: " + e.message;
+  }
+}
+
+$("save-presence").onclick = async (ev) => {
+  ev.target.disabled = true;
+  const entities = [...$("presence").selectedOptions].map((o) => o.value);
+  if (await loadPresence("POST", {entities})) await load();
+  ev.target.disabled = false;
+};
 load();
+loadPresence();
 setInterval(load, 60000);
 </script>
 </body>
