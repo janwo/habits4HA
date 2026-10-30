@@ -56,9 +56,27 @@ def part_condition(part: str) -> dict:
     return {"condition": "time", "after": f"{a:02d}:00:00", "before": f"{b:02d}:00:00"}
 
 
-def build_automation(p: Pattern, name: str) -> dict | None:
+def presence_condition(presence: dict | None) -> dict:
+    """Bedingung „jemand zuhause“: eigene Anwesenheits-Entitäten (mit ihrem aktuellen
+    Zustand als Beispiel, was „zuhause“ heißt) oder zone.home."""
+    if not presence:
+        return {"condition": "numeric_state", "entity_id": "zone.home", "above": 0}
+    parts = []
+    for entity_id, state in sorted(presence.items()):
+        try:
+            float(state)
+            parts.append({"condition": "numeric_state", "entity_id": entity_id, "above": 0})
+        except (TypeError, ValueError):
+            domain = entity_id.split(".", 1)[0]
+            home = "home" if domain in ("person", "device_tracker", "group") and \
+                state in ("home", "not_home") else "on"
+            parts.append({"condition": "state", "entity_id": entity_id, "state": home})
+    return parts[0] if len(parts) == 1 else {"condition": "or", "conditions": parts}
+
+
+def build_automation(p: Pattern, name: str, presence: dict | None = None) -> dict | None:
     """Automation, die das Muster umsetzt – None, wenn es sich nicht abbilden lässt."""
-    conditions = [{"condition": "numeric_state", "entity_id": "zone.home", "above": 0}]
+    conditions = [presence_condition(presence)]
     base = {"alias": f"Gewohnheit: {name} {describe_action(p)}",
             "description": f"Angelegt vom Habit Learner – {p.describe()}",
             "mode": "single"}
@@ -188,7 +206,9 @@ class Suggester:
 
     async def offer(self, pid: str, p: Pattern, user_id: str | None, now: float):
         name = self.name(p.entity_id)
-        config = build_automation(p, name)
+        presence = {e: self.l.states.get(e, {}).get("state")
+                    for e in getattr(self.l, "presence_entities", ())}
+        config = build_automation(p, name, presence)
         if not config:
             log.debug("Vorschlag %s lässt sich nicht als Automation abbilden", pid)
             return

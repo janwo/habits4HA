@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 
 from analysis import (DAY_GROUPS, MIN_PER_DEGREE, MIN_TOLERANCE, Pattern,
-                      minute_of_day, part_of_day)
+                      anyone_home, minute_of_day, part_of_day)
 
 CONTEXT_WINDOW = 60       # Sekunden, um nach dem Einschalten fertig einzustellen
 
@@ -50,9 +50,10 @@ class Prediction:
 
 
 class Shadow:
-    def __init__(self, store, zone):
+    def __init__(self, store, zone, presence_entities=()):
         self.store = store
         self.zone = zone
+        self.presence_entities = tuple(presence_entities)
         self.patterns: list[Pattern] = []
         self.open: list[Prediction] = []
         self.done_today: dict[str, dt.date] = {}   # pattern_id → Tag der letzten Vorhersage
@@ -120,8 +121,7 @@ class Shadow:
                 return
             self.done_today[pid] = today
         expected = expected or p.key
-        if not any(e.startswith("person.") and s.get("state") == "home"
-                   for e, s in states.items()):
+        if not anyone_home(states, self.presence_entities):
             log.debug("SCHATTEN  %s – niemand zuhause, keine Vorhersage", p.key)
             return
         if current_key(p.entity_id) == expected:

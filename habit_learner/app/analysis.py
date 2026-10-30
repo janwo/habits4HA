@@ -42,6 +42,7 @@ CLUSTER_GAP = 120         # Minuten – getrennte Zeitpunkte am Tag
 CLUSTER_SIGMA = 20        # Minuten – Glättung der Tagesverteilung
 SHIFT_MIN = 15            # Minuten – ab hier gilt eine Verschiebung
 SEGMENT_MIN = 5           # Tage je Abschnitt vor/nach einer Verschiebung
+HOME_STATES = {"home", "on", "true", "anwesend", "present"}
 STATEFUL = ("person.", "binary_sensor.", "input_boolean.", "switch.", "device_tracker.")
 
 DAY_GROUPS = {
@@ -132,6 +133,39 @@ def outcome(entity_id: str, state: str, attrs: dict) -> str:
     return " ".join(parts)
 
 
+def is_home(entity_id: str, state) -> bool:
+    """Bedeutet dieser Zustand „jemand zuhause“? Zähler (zone.home, Sensor) > 0 auch."""
+    if state is None:
+        return False
+    try:
+        return float(state) > 0
+    except (TypeError, ValueError):
+        return str(state).lower() in HOME_STATES
+
+
+def presence_sources(entity_id: str, presence_entities) -> bool:
+    """Zählt diese Entität für die Anwesenheit? Eigene Einstellung schlägt Personen."""
+    if presence_entities:
+        return entity_id in presence_entities
+    return entity_id.startswith("person.")
+
+
+PRESENCE_NAMES = {"presence", "anwesenheit", "zuhause"}
+PRESENCE_DOMAINS = ("binary_sensor", "input_boolean", "group", "sensor", "zone")
+
+
+def find_presence(states: dict) -> tuple[str, ...]:
+    """Anwesenheits-Entität der ganzen Wohnung am Namen erkennen (z. B. binary_sensor.presence)."""
+    return tuple(sorted(e for e in states
+                        if e.split(".", 1)[0] in PRESENCE_DOMAINS
+                        and e.split(".", 1)[1] in PRESENCE_NAMES))
+
+
+def anyone_home(states: dict, presence_entities=()) -> bool:
+    return any(is_home(e, s.get("state")) for e, s in states.items()
+               if presence_sources(e, presence_entities))
+
+
 def trigger_key(entity_id: str, state: str) -> str:
     """Auslöser vergröbern: Zustände bei Personen & Co., sonst nur „geändert“ (Wecker)."""
     if entity_id.startswith(STATEFUL) or state in ("on", "off", "home", "not_home"):
@@ -184,13 +218,14 @@ def load_actions(db: sqlite3.Connection, since: float, origins: tuple) -> list[d
 class Presence:
     """Rekonstruiert aus den Auslöser-Ereignissen, wer wann zuhause war."""
 
-    def __init__(self, db: sqlite3.Connection):
+    def __init__(self, db: sqlite3.Connection, entities=()):
         rows = db.execute(
             "SELECT ts, entity_id, new_state FROM events"
-            " WHERE kind = 'trigger' AND entity_id LIKE 'person.%' ORDER BY ts").fetchall()
+            " WHERE kind = 'trigger' ORDER BY ts").fetchall()
         self.timeline: dict[str, list[tuple[float, bool]]] = defaultdict(list)
         for ts, entity_id, state in rows:
-            self.timeline[entity_id].append((ts, state == "home"))
+            if presence_sources(entity_id, entities):
+                self.timeline[entity_id].append((ts, is_home(entity_id, state)))
 
     def home_at(self, ts: float) -> bool | None:
         """True/False – oder None, wenn nichts über Personen bekannt ist."""
@@ -471,7 +506,8 @@ def best_pattern(actions: list[dict], days_window, zone, presence,
 
 # ---------------------------------------------------------------- Einstieg
 
-def analyse(db: sqlite3.Connection, now: float | None = None, zone=None) -> list[Pattern]:
+def analyse(db: sqlite3.Connection, now: float | None = None, zone=None,
+            presence_entities=()) -> list[Pattern]:
     now = now or time.time()
     zone = zone or tz()
     since = now - WINDOW_DAYS * 86400
@@ -483,7 +519,7 @@ def analyse(db: sqlite3.Connection, now: float | None = None, zone=None) -> list
     # Der laufende Tag ist noch nicht vorbei und zählt nicht als Gelegenheit.
     days_window = [start + dt.timedelta(days=i) for i in range((end - start).days)]
 
-    presence = Presence(db)
+    presence = Presence(db, presence_entities)
     triggers = load_triggers(db, since)
     by_key: dict[str, list] = defaultdict(list)
     lights: dict[str, list] = defaultdict(list)

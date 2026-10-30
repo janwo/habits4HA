@@ -147,6 +147,28 @@ async def scenario(path):
     assert not s.may_offer(pattern_id(kaffee), later + 86400)
     assert s.may_offer(pattern_id(kaffee), later + 4 * 86400)
 
+    # Anwesenheit als eigene Entität
+    from analysis import Presence, anyone_home, find_presence, is_home
+    from suggest import presence_condition
+    states = {"binary_sensor.presence": {"state": "off"}, "person.alex": {"state": "home"},
+              "binary_sensor.kueche_bewegung": {"state": "on"}}
+    assert find_presence(states) == ("binary_sensor.presence",)
+    assert anyone_home(states, ())                                   # ohne: Personen
+    assert not anyone_home(states, ("binary_sensor.presence",))      # mit: nur sie zählt
+    assert is_home("zone.home", "2") and not is_home("zone.home", "0")
+    assert presence_condition({"binary_sensor.presence": "off"}) == \
+        {"condition": "state", "entity_id": "binary_sensor.presence", "state": "on"}
+    assert presence_condition({"zone.home": "1"})["condition"] == "numeric_state"
+    assert presence_condition(None)["entity_id"] == "zone.home"
+    a2 = build_automation(wohn, "Wohnzimmer", {"binary_sensor.presence": "on"})
+    assert a2["conditions"][0]["entity_id"] == "binary_sensor.presence", a2
+    store.add(ts=1, entity_id="binary_sensor.presence", old_state=None, new_state="on",
+              attributes=None, origin="device", user_id=None, context_id=None, kind="trigger")
+    store.add(ts=100, entity_id="binary_sensor.presence", old_state="on", new_state="off",
+              attributes=None, origin="device", user_id=None, context_id=None, kind="trigger")
+    pr = Presence(store.db, ("binary_sensor.presence",))
+    assert pr.home_at(50) is True and pr.home_at(150) is False
+
     assert in_quiet_hours(23 * 60, "22:00", "07:00") and in_quiet_hours(6 * 60, "22:00", "07:00")
     assert not in_quiet_hours(12 * 60, "22:00", "07:00")
     print("alle Prüfungen bestanden")

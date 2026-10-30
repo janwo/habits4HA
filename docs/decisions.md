@@ -242,3 +242,17 @@ Abschnitte mit eigenem Median, je ≥ 5 Tage). Er gilt, wenn sich die Mitte um
 Abschnitt für sich stabil ist – sonst ist es Wandern (z. B. ein
 Sonnenmuster in Uhrzeit gemessen), kein Sprung. Dann zählen nur Tage ab
 dem Bruch; die Oberfläche zeigt „verschoben seit …“.
+
+## D21 – Anwesenheit als eigene Entität
+2026-10-30 · gilt
+
+**Kontext:** Anwesenheit gibt es oft als eine Entität für die ganze Wohnung
+(z. B. `binary_sensor.presence`), nicht nur über Personen.
+
+**Entscheidung:** Option `presence_entities`. Leer: Entitäten namens
+`presence`, `anwesenheit` oder `zuhause` (binary_sensor, input_boolean,
+group, sensor, zone) werden erkannt (→ D07, keine IDs im Repo); sonst
+`person.*`. Sind Anwesenheits-Entitäten gesetzt oder erkannt, zählen nur
+sie – Personen nicht mehr. „Zuhause“ = `on`/`home`/`true` oder Zahl > 0.
+Gilt für Gelegenheiten, Schattenmodus, Kontext-Momentaufnahme und die
+Bedingung in angelegten Automationen.

@@ -68,6 +68,8 @@ class Learner:
         self.exclude_users = set(opts.get("exclude_users", []))
         self.retention_days = int(opts.get("retention_days", 180))
         self.trigger_entities = set(opts.get("trigger_entities", []))
+        self.presence_option = tuple(opts.get("presence_entities", []))
+        self.presence_entities = self.presence_option   # ohne Option: erkannt (discover)
         self.store = Store(DB_FILE)
         self.msg_id = 0
         self.states: dict[str, dict] = {}       # aktueller Zustand aller Entitäten
@@ -75,7 +77,7 @@ class Learner:
         self.contexts: OrderedDict[str, str] = OrderedDict()  # context_id → automation
         self.zone = analysis.tz()
         self.store.close_stale_predictions(time.time())
-        self.shadow = Shadow(self.store, self.zone)
+        self.shadow = Shadow(self.store, self.zone, self.presence_entities)
         self.ws = None
         self.session = None
         self.pending: dict[int, asyncio.Future] = {}
@@ -119,6 +121,7 @@ class Learner:
                 await self.load_areas(ws)
                 self.states = {s["entity_id"]: s
                                for s in await self.call(ws, "get_states")}
+                self.find_presence()
                 self.snapshot_triggers()
 
                 for event_type in ("state_changed", "automation_triggered",
@@ -152,6 +155,12 @@ class Learner:
                 if not msg.get("success", True):
                     raise RuntimeError(f"{type_} fehlgeschlagen: {msg.get('error')}")
                 return msg.get("result")
+
+    def find_presence(self):
+        found = self.presence_option or analysis.find_presence(self.states)
+        if found != self.presence_entities:
+            log.info("Anwesenheit: %s", ", ".join(found) or "Personen (person.*)")
+        self.presence_entities = self.shadow.presence_entities = found
 
     async def discover(self):
         try:
@@ -205,7 +214,8 @@ class Learner:
         log.info("Bereiche geladen: %d Entitäten zugeordnet", len(self.areas))
 
     def is_trigger(self, entity_id: str) -> bool:
-        return entity_id.startswith("person.") or entity_id in self.trigger_entities
+        return (entity_id.startswith("person.") or entity_id in self.trigger_entities
+                or entity_id in self.presence_entities)
 
     def snapshot_triggers(self):
         """Ausgangszustand der Auslöser speichern, damit der Verlauf lückenlos ist."""
@@ -223,7 +233,8 @@ class Learner:
             "sun_elevation": sun.get("elevation"),
             "sun_rising": sun.get("rising"),
             "home": sorted(e for e, s in self.states.items()
-                           if e.startswith("person.") and s.get("state") == "home"),
+                           if analysis.presence_sources(e, self.presence_entities)
+                           and analysis.is_home(e, s.get("state"))),
             "media": sorted(e for e, s in self.states.items()
                             if e.startswith("media_player.")
                             and s.get("state") in MEDIA_ACTIVE),
@@ -344,7 +355,8 @@ class Learner:
             await asyncio.sleep(24 * 3600)
 
     def run_analysis(self):
-        patterns = analysis.analyse(self.store.db, zone=self.zone)
+        patterns = analysis.analyse(self.store.db, zone=self.zone,
+                                    presence_entities=self.presence_entities)
         lines = analysis.report(patterns)
         log.info("Analyse: %d Muster", len(lines))
         for line in lines + self.shadow.report():
