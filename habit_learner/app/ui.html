@@ -77,6 +77,9 @@
   <h2>Bereits automatisiert</h2>
   <div id="done"></div>
 
+  <h2>Angelegte Automationen</h2>
+  <div id="automations"></div>
+
   <h2>Vorschläge und Antworten</h2>
   <div id="suggestions"></div>
 
@@ -132,6 +135,17 @@ function render(d) {
   list("weak", by("schwach"), (p) => card(p, t, true), "Keine.");
   $("weak-box").style.display = by("schwach").length ? "" : "none";
   list("done", by("erledigt"), (p) => card(p, t, false), "Keine.");
+  const text = Object.fromEntries(d.suggestions.map((s) => [s.id, s.text]));
+  list("automations", d.automations, (a) => {
+    const b = a.balance;
+    const chip = a.status === "pausiert"
+      ? `<span class="chip warn">pausiert – wird am ${time(a.delete_at)} gelöscht</span>`
+      : `<span class="chip ok">aktiv</span>`;
+    return `<div class="card"><div class="row"><span class="title">${esc(a.automation)}</span>
+      ${chip}</div><div class="why">${esc(text[a.id] || "")}</div>
+      <div class="why">${b.gelassen}× gelassen · ${b.korrigiert}× korrigiert ·
+        ${b["rückgängig"]}× rückgängig</div></div>`;
+  }, "Noch keine angelegt.");
   list("suggestions", d.suggestions, (s) => `<div class="card">
       <div class="row"><span class="chip">${esc(s.status)}</span>
         <span class="sub">${time(s.offered)}</span></div>

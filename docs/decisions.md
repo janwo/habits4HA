@@ -148,3 +148,22 @@ einzelne HTML-Seite (ohne Framework, ohne CDN) und eine JSON-API unter
 `api/…`. Zugriff nur über den Ingress-Proxy des Supervisors. Zeigt
 Vorschläge, fast erreichte Muster mit Fortschritt zu den Schwellen (D05),
 Schattenbilanz und Vorschläge mit Antworten.
+
+## D14 – Angelegte Automationen nachmessen, pausieren, löschen
+2026-10-30 · gilt (setzt D06 um)
+
+**Kontext:** Eine angenommene Automation kann sich als falsch herausstellen.
+Sie soll nicht ewig bleiben.
+
+**Entscheidung:**
+- Jeder Lauf einer `habit_learner_*`-Automation wird bewertet: *rückgängig*
+  (innerhalb 15 min von Hand umgeschaltet), *korrigiert* (gleicher Zustand,
+  andere Helligkeit/Farbe), *gelassen* (nichts geändert, jemand zuhause).
+  Läufe ohne Anwesenheit zählen nicht.
+- Von den letzten 5 bewerteten Läufen ≥ 3× rückgängig → automatisch
+  pausieren (in HA deaktivieren) und per Handy melden. *Korrigiert* pausiert
+  nicht.
+- Schaltet jemand sie wieder ein → gilt als angenommen, Messung beginnt neu.
+- 14 Tage pausiert → gelöscht. Das Muster wird danach nicht erneut
+  vorgeschlagen.
+- Nur eigene Automationen (`habit_learner_*`) werden angefasst.

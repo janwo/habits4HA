@@ -46,8 +46,11 @@ CREATE TABLE IF NOT EXISTS suggestions (
     config      TEXT NOT NULL,           -- JSON: Automation, die angelegt würde
     offered     REAL NOT NULL,
     status      TEXT NOT NULL DEFAULT 'offen',  -- offen | angenommen | abgelehnt | später
+                                                -- | pausiert | gelöscht
     answered    REAL,
-    automation  TEXT                     -- ID der angelegten Automation
+    automation  TEXT,                    -- ID der angelegten Automation
+    since       REAL,                    -- ab hier wird die Automation gemessen
+    paused      REAL                     -- pausiert seit
 );
 CREATE INDEX IF NOT EXISTS idx_suggestions_pattern ON suggestions(pattern, offered);
 """
@@ -59,6 +62,7 @@ MIGRATIONS = {
     "automation": "TEXT",
     "context": "TEXT",
 }
+SUGGESTION_MIGRATIONS = {"since": "REAL", "paused": "REAL"}
 
 # Nur diese Attribute sind für Gewohnheiten interessant; der Rest bläht nur auf.
 KEEP_ATTRS = {
@@ -75,6 +79,10 @@ class Store:
         for col, decl in MIGRATIONS.items():
             if col not in cols:
                 self.db.execute(f"ALTER TABLE events ADD COLUMN {col} {decl}")
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(suggestions)")}
+        for col, decl in SUGGESTION_MIGRATIONS.items():
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE suggestions ADD COLUMN {col} {decl}")
         self.db.commit()
 
     def add(self, *, ts, entity_id, old_state, new_state, attributes,
@@ -126,8 +134,8 @@ class Store:
 
     def answer_suggestion(self, sid, *, status, answered, automation=None):
         self.db.execute(
-            "UPDATE suggestions SET status = ?, answered = ?, automation = ? WHERE id = ?",
-            (status, answered, automation, sid))
+            "UPDATE suggestions SET status = ?, answered = ?, automation = ?, since = ?"
+            " WHERE id = ?", (status, answered, automation, answered, sid))
         self.db.commit()
 
     def suggestion(self, sid) -> dict | None:
@@ -139,6 +147,21 @@ class Store:
         return {"pattern": row[0], "text": row[1], "config": json.loads(row[2]),
                 "status": row[3]}
 
+    def automated(self) -> list[dict]:
+        """Angelegte Automationen, die noch gemessen oder aufgeräumt werden."""
+        rows = self.db.execute(
+            "SELECT id, automation, status, since, paused FROM suggestions"
+            " WHERE status IN ('angenommen', 'pausiert') AND automation IS NOT NULL"
+            " ORDER BY id").fetchall()
+        keys = ("id", "automation", "status", "since", "paused")
+        return [dict(zip(keys, row)) for row in rows]
+
+    def set_automation_status(self, sid, status, *, since=None, paused=None):
+        self.db.execute(
+            "UPDATE suggestions SET status = ?, since = COALESCE(?, since), paused = ?"
+            " WHERE id = ?", (status, since, paused, sid))
+        self.db.commit()
+
     def last_suggestion(self, pattern) -> tuple[str, float] | None:
         """Status und Zeitpunkt (Antwort, sonst Angebot) des jüngsten Vorschlags."""
         return self.db.execute(
@@ -147,9 +170,10 @@ class Store:
 
     def suggestions(self, limit: int = 50) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, pattern, text, offered, status, answered, automation"
+            "SELECT id, pattern, text, offered, status, answered, automation, paused"
             " FROM suggestions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        keys = ("id", "pattern", "text", "offered", "status", "answered", "automation")
+        keys = ("id", "pattern", "text", "offered", "status", "answered", "automation",
+                "paused")
         return [dict(zip(keys, row)) for row in rows]
 
     def offers_since(self, ts: float) -> int:

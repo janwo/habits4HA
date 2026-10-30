@@ -24,6 +24,7 @@ import aiohttp
 
 import analysis
 import web
+from review import Reviewer
 from shadow import Shadow
 from suggest import Suggester
 from store import Store
@@ -83,6 +84,7 @@ class Learner:
         self.patterns: list = []
         self.analysed_at: float | None = None
         self.shadow.on_hit = self.suggester.on_hit
+        self.reviewer = Reviewer(self)
 
     def next_id(self) -> int:
         self.msg_id += 1
@@ -351,6 +353,18 @@ class Learner:
             await asyncio.sleep(30)
 
 
+    async def review(self):
+        """Stündlich angelegte Automationen nachmessen, pausieren, löschen."""
+        while True:
+            await asyncio.sleep(3600)
+            if self.ws is None:
+                continue
+            try:
+                await self.reviewer.check(time.time())
+            except Exception:  # noqa: BLE001
+                log.exception("Nachmessen fehlgeschlagen")
+
+
 async def main():
     opts = load_options()
     logging.basicConfig(
@@ -360,7 +374,8 @@ async def main():
     learner = Learner(opts)
     log.info("Habit Learner gestartet – beobachte: %s", ", ".join(sorted(learner.domains)))
     await web.start(learner)
-    await asyncio.gather(learner.run(), learner.maintenance(), learner.ticker())
+    await asyncio.gather(learner.run(), learner.maintenance(), learner.ticker(),
+                         learner.review())
 
 
 if __name__ == "__main__":

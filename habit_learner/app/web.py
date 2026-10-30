@@ -10,6 +10,7 @@ import time
 from aiohttp import web
 
 import analysis
+import review
 from shadow import pattern_id
 
 log = logging.getLogger("habit_learner")
@@ -49,6 +50,15 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
         return {e: s.get("attributes", {}).get("friendly_name")
                 for e, s in learner.states.items()}
 
+    def automations() -> list[dict]:
+        out = []
+        for s in learner.store.automated():
+            runs = learner.reviewer.runs(s)
+            out.append({**s, "balance": review.balance(runs),
+                        "delete_at": s["paused"] + review.DELETE_DAYS * 86400
+                        if s["paused"] else None})
+        return out
+
     def overview() -> dict:
         n = names()
         shadow = {pid: (hits, total)
@@ -69,6 +79,7 @@ def build_app(learner, allow_any: bool = False) -> web.Application:
                            "window_days": analysis.WINDOW_DAYS},
             "patterns": patterns,
             "suggestions": learner.store.suggestions(),
+            "automations": automations(),
             "discovery": {"phones": len(learner.suggester.notify),
                           "speakers": len(learner.suggester.players()),
                           "announce": learner.suggester.announce},

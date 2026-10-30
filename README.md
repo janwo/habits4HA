@@ -22,6 +22,7 @@ Automationen vorschlägt – z. B. „nach dem Wecker nach ~10 min Licht aus“ 
 | 4 | Vorschläge im Moment: Benachrichtigung, Ansage, Automation anlegen | ✅ v0.5.0 |
 | 4b | Autopilot je Muster | geplant |
 | 5 | Seitenleiste: Muster, Fortschritt zu den Schwellen, Schattenbilanz, Vorschläge | ✅ v0.6.0 |
+| 6 | Angelegte Automationen nachmessen; oft rückgängig → pausieren, nach 14 Tagen löschen | ✅ v0.7.0 |
 
 ## Herkunft von Ereignissen
 
